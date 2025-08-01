@@ -9,7 +9,6 @@ import 'screens/homescreen.dart';
 import 'screens/admin_dashboard.dart';
 import 'screens/registeration_screens/login_screen.dart';
 import 'screens/registeration_screens/signup_screen.dart';
-import 'screens/doctor_register_screen.dart';
 import 'services/appointment_service.dart';
 import 'services/notification_service.dart';
 import 'theme.dart'; // Add this import (adjust path as needed)
@@ -59,10 +58,6 @@ class MyApp extends StatelessWidget {
             '/admin': (context) => const AdminDashboard(),
             '/home': (context) => const HomeScreen(),
             '/signup': (context) => const Signup(),
-            '/doctor-register': (context) {
-              final args = ModalRoute.of(context)!.settings.arguments as Map<String, String>?;
-              return DoctorRegistrationScreen(userData: args);
-            },
           },
         );
       },
