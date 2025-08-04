@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:provider/provider.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'screens/splash_screen.dart';
 import 'screens/homescreen.dart';
@@ -14,26 +14,34 @@ import 'services/appointment_service.dart';
 import 'services/notification_service.dart';
 import 'theme.dart';
 
+// Secure environment configuration class
+class EnvironmentConfig {
+  // Load from environment variables with secure fallbacks
+  static String get GROQ_API_KEY => _getEnvVar('GROQ_API_KEY', '');
+  static String get GROQ_MODEL => _getEnvVar('GROQ_MODEL', 'llama-3.1-70b-instant');
+  static String get DEBUG_MODE => _getEnvVar('DEBUG_MODE', 'false');
+  static String get APP_NAME => _getEnvVar('APP_NAME', 'MediCare+');
+  static String get APP_VERSION => _getEnvVar('APP_VERSION', '1.0.0');
+  
+  // Helper method to safely get environment variables
+  static String _getEnvVar(String key, String defaultValue) {
+    try {
+      return dotenv.env[key] ?? defaultValue;
+    } catch (e) {
+      // If dotenv is not initialized, return default value
+      return defaultValue;
+    }
+  }
+  
+  // Check if API key is configured
+  static bool get hasApiKey => GROQ_API_KEY.isNotEmpty;
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  try {
-    // Load environment variables first
-    await dotenv.load(fileName: ".env");
-    print('✅ Environment variables loaded successfully');
-    
-    // Verify important environment variables are loaded
-    final groqApiKey = dotenv.env['GROQ_API_KEY'];
-    if (groqApiKey == null || groqApiKey.isEmpty) {
-      print('⚠️ Warning: GROQ_API_KEY not found in .env file');
-    } else {
-      print('✅ Groq API key loaded');
-    }
-    
-  } catch (e) {
-    print('❌ Error loading .env file: $e');
-    print('📝 Make sure you have a .env file in your project root');
-  }
+  // Load environment variables securely
+  await _loadEnvironmentVariables();
   
   try {
     // Initialize Firebase
@@ -64,15 +72,61 @@ void main() async {
     print('❌ Error initializing services: $e');
   }
 
-  // Uncomment the next line to initialize sample data with current dates
-  // await FirestoreSetup.initializeSampleData();
-
   runApp(
     ChangeNotifierProvider(
       create: (context) => ThemeManager(),
       child: const MyApp(),
     ),
   );
+}
+
+Future<void> _loadEnvironmentVariables() async {
+  try {
+    print('🔍 Attempting to load .env file...');
+    
+    // Try to load .env file
+    await dotenv.load(fileName: ".env");
+    print('✅ Environment variables loaded from .env file');
+    
+    // Debug: Print all environment variables
+    print('🔍 All environment variables:');
+    dotenv.env.forEach((key, value) {
+      if (key.contains('GROQ') || key.contains('API')) {
+        print('  $key: ${value != null ? '${value.substring(0, 10)}...' : 'null'}');
+      }
+    });
+    
+    // Check if API key is loaded
+    final apiKey = dotenv.env['GROQ_API_KEY'];
+    if (apiKey != null && apiKey.isNotEmpty) {
+      print('✅ Groq API key found: ${apiKey.substring(0, 10)}...');
+      print('🔑 Full API key length: ${apiKey.length}');
+    } else {
+      print('⚠️ No Groq API key found in .env file.');
+      print('📝 Make sure your .env file contains: GROQ_API_KEY=your_key_here');
+    }
+  } catch (e) {
+    print('❌ Error loading .env file: $e');
+    print('📝 Make sure:');
+    print('   1. .env file exists in project root (same level as pubspec.yaml)');
+    print('   2. .env is added to assets in pubspec.yaml');
+    print('   3. File format is correct (no spaces around =)');
+    print('   4. File is saved and not corrupted');
+    
+    // Try alternative loading method
+    try {
+      print('🔄 Trying alternative loading method...');
+      await dotenv.load();
+      print('✅ Alternative loading successful');
+      
+      final apiKey = dotenv.env['GROQ_API_KEY'];
+      if (apiKey != null && apiKey.isNotEmpty) {
+        print('✅ Groq API key found with alternative method: ${apiKey.substring(0, 10)}...');
+      }
+    } catch (e2) {
+      print('❌ Alternative loading also failed: $e2');
+    }
+  }
 }
 
 class MyApp extends StatelessWidget {

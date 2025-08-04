@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../main.dart';
 
 class GroqService {
   static const String _baseUrl = 'https://api.groq.com/openai/v1';
@@ -10,11 +10,11 @@ class GroqService {
   
   // Get API key from environment variables
   static String get _apiKey {
-    final key = dotenv.env['GROQ_API_KEY'] ?? '';
+    final key = EnvironmentConfig.GROQ_API_KEY;
     if (key.isEmpty) {
       throw GroqException(
         'GROQ_API_KEY not found in environment variables. '
-        'Please add your Groq API key to the .env file.'
+        'Please add your Groq API key to the EnvironmentConfig class.'
       );
     }
     return key;
@@ -28,7 +28,7 @@ class GroqService {
   
   // Get default model from environment or use fallback
   static String get _defaultModel {
-    return dotenv.env['GROQ_MODEL'] ?? _modelLlama370B;
+    return EnvironmentConfig.GROQ_MODEL;
   }
   
   final http.Client _client;
@@ -181,7 +181,7 @@ class GroqService {
       'temperature': _temperature,
       'timeout': _timeout.inSeconds,
       'hasApiKey': _apiKey.isNotEmpty,
-      'debugMode': dotenv.env['DEBUG_MODE'] == 'true',
+      'debugMode': EnvironmentConfig.DEBUG_MODE == 'true',
     };
   }
 
@@ -233,10 +233,10 @@ class GroqService {
     final headers = {
       'Authorization': 'Bearer $_apiKey',
       'Content-Type': 'application/json',
-      'User-Agent': '${dotenv.env['APP_NAME'] ?? 'MediCare+'}/${dotenv.env['APP_VERSION'] ?? '1.0.0'}',
+      'User-Agent': '${EnvironmentConfig.APP_NAME}/${EnvironmentConfig.APP_VERSION}',
     };
 
-    if (kDebugMode && dotenv.env['DEBUG_MODE'] == 'true') {
+    if (kDebugMode && EnvironmentConfig.DEBUG_MODE == 'true') {
       print('GroqService Request: ${requestBody['model']} - ${messages.length} messages');
     }
 
@@ -251,7 +251,7 @@ class GroqService {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       
-      if (kDebugMode && dotenv.env['DEBUG_MODE'] == 'true') {
+      if (kDebugMode && EnvironmentConfig.DEBUG_MODE == 'true') {
         final usage = data['usage'] as Map<String, dynamic>?;
         if (usage != null) {
           print('GroqService Usage: ${usage['total_tokens']} tokens');
@@ -380,7 +380,7 @@ class ChatMessage {
 /// Service configuration class
 class GroqConfig {
   static String get defaultSystemPrompt {
-    return dotenv.env['SYSTEM_PROMPT'] ?? '''You are a professional AI medical assistant. Your responsibilities:
+    return '''You are a professional AI medical assistant. Your responsibilities:
 
 MEDICAL ASSISTANCE:
 - Provide helpful medical information with appropriate disclaimers
@@ -407,10 +407,10 @@ LIMITATIONS:
 
   static Map<String, dynamic> get defaultSettings {
     return {
-      'model': dotenv.env['GROQ_MODEL'] ?? 'llama-3.1-70b-versatile',
-      'maxTokens': int.tryParse(dotenv.env['MAX_TOKENS'] ?? '1024') ?? 1024,
-      'temperature': double.tryParse(dotenv.env['TEMPERATURE'] ?? '0.7') ?? 0.7,
-      'timeout': int.tryParse(dotenv.env['TIMEOUT_SECONDS'] ?? '30') ?? 30,
+      'model': EnvironmentConfig.GROQ_MODEL,
+      'maxTokens': 1024,
+      'temperature': 0.7,
+      'timeout': 30,
     };
   }
 }
@@ -450,11 +450,11 @@ class GroqServiceHelper {
   
   static Map<String, dynamic> getEnvironmentInfo() {
     return {
-      'hasGroqApiKey': (dotenv.env['GROQ_API_KEY'] ?? '').isNotEmpty,
-      'groqModel': dotenv.env['GROQ_MODEL'] ?? 'not set',
-      'debugMode': dotenv.env['DEBUG_MODE'] == 'true',
-      'appName': dotenv.env['APP_NAME'] ?? 'MediCare+',
-      'appVersion': dotenv.env['APP_VERSION'] ?? '1.0.0',
+      'hasGroqApiKey': EnvironmentConfig.GROQ_API_KEY.isNotEmpty,
+      'groqModel': EnvironmentConfig.GROQ_MODEL,
+      'debugMode': EnvironmentConfig.DEBUG_MODE == 'true',
+      'appName': EnvironmentConfig.APP_NAME,
+      'appVersion': EnvironmentConfig.APP_VERSION,
     };
   }
 }
