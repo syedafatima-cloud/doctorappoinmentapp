@@ -21,7 +21,7 @@ class GroqService {
   }
   
   // Available Groq models - choose based on your needs
-  static const String _modelLlama370B = 'llama-3.1-70b-versatile';
+  static const String _modelLlama370B = 'llama-3.1-70b-instant';
   static const String _modelLlama38B = 'llama-3.1-8b-instant';
   static const String _modelMixtral = 'mixtral-8x7b-32768';
   static const String _modelGemma = 'gemma-7b-it';
