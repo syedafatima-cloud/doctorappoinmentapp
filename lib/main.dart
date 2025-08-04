@@ -18,7 +18,7 @@ import 'theme.dart';
 class EnvironmentConfig {
   // Load from environment variables with secure fallbacks
   static String get GROQ_API_KEY => _getEnvVar('GROQ_API_KEY', '');
-  static String get GROQ_MODEL => _getEnvVar('GROQ_MODEL', 'llama-3.1-70b-instant');
+  static String get GROQ_MODEL => 'llama-3.1-70b-instant'; // Temporarily hardcoded to fix connection issue
   static String get DEBUG_MODE => _getEnvVar('DEBUG_MODE', 'false');
   static String get APP_NAME => _getEnvVar('APP_NAME', 'MediCare+');
   static String get APP_VERSION => _getEnvVar('APP_VERSION', '1.0.0');
