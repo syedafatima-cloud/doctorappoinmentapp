@@ -1,4 +1,4 @@
-import 'package:doctorappoinmentapp/models/chat_model.dart';
+import 'package:doctorappoinmentapp/models/chat_model.dart' as chat_model;
 import 'package:doctorappoinmentapp/models/doctor_model.dart';
 import 'package:doctorappoinmentapp/services/admin_services.dart';
 import 'package:doctorappoinmentapp/services/appointment_service.dart';
@@ -21,7 +21,7 @@ class _GroqMedicalBotState extends State<GroqMedicalBot> {
   final NotificationService _notificationService = NotificationService();
   final GroqService _groqService = GroqService();
   
-  final List<ChatMessage> _chatMessages = [];
+  final List<chat_model.ChatMessage> _chatMessages = [];
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   
@@ -216,7 +216,7 @@ LIMITATIONS:
 
   void _addUserMessage(String message) {
     setState(() {
-      _chatMessages.add(ChatMessage(
+      _chatMessages.add(chat_model.ChatMessage(
         text: message,
         isUser: true,
         timestamp: DateTime.now(),
@@ -228,7 +228,7 @@ LIMITATIONS:
   @override
   dynamic _addBotMessage(dynamic message) {
     setState(() {
-      _chatMessages.add(ChatMessage(
+      _chatMessages.add(chat_model.ChatMessage(
         text: message.toString(),
         isUser: false,
         timestamp: DateTime.now(),
@@ -1636,7 +1636,7 @@ LIMITATIONS:
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message) {
+  Widget _buildMessageBubble(chat_model.ChatMessage message) {
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(

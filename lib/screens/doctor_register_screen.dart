@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import '../models/doctor_register_model.dart';
 import '../services/doctor_register_service.dart';
 import '../services/doctor_firestore_service.dart';
 

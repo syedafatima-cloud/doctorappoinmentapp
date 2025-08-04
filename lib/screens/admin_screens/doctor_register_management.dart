@@ -399,7 +399,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
             ),
             const SizedBox(height: 16),
             Text(
-              'No ${status} requests found',
+              'No $status requests found',
               style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
           ],
