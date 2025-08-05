@@ -1,4 +1,5 @@
 import 'package:doctorappoinmentapp/screens/appointment_booking.dart';
+import 'package:doctorappoinmentapp/screens/talk_to_doc_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:doctorappoinmentapp/screens/groq_medicalbot.dart';
 import 'package:doctorappoinmentapp/screens/doctor_register_screen.dart';
@@ -154,7 +155,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
   }
-
+  void _navigateToTalkToDoctor() {
+  Navigator.push(
+    context,
+    PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => const TalkToDoctorScreen(),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1.0, 0.0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeInOut,
+          )),
+          child: child,
+        );
+      },
+    ),
+  );
+}
   void _navigateToDoctorRegister() {
     Navigator.push(
       context,
@@ -787,36 +807,36 @@ SizedBox(
 
   Widget _buildQuickActionsGrid() {
     final actions = [
-      {
-        'icon': Icons.calendar_today_outlined,
-        'title': 'Appointments',
-        'subtitle': 'Book & manage',
-        'color': const Color(0xFF7E57C2),
-        'onTap': _navigateToMedicalBot,
-      },
-      {
-        'icon': Icons.medical_information_outlined,
-        'title': 'Health Records',
-        'subtitle': 'View history',
-        'color': const Color(0xFFC5CAE9),
-        'onTap': () => _showSnackBar('Health Records coming soon'),
-      },
-      
-      {
-        'icon': Icons.local_pharmacy_outlined,
-        'title': 'Pharmacy',
-        'subtitle': 'Order medicines',
-        'color': const Color(0xFFD1C4E9),
-        'onTap': () => _showSnackBar('Pharmacy coming soon'),
-      },
-      {
-        'icon': Icons.emergency_outlined,
-        'title': 'Emergency',
-        'subtitle': 'Urgent care',
-        'color': Colors.red.shade400,
-        'onTap': () => _showSnackBar('Emergency services'),
-      },
-    ];
+    {
+      'icon': Icons.chat_outlined,
+      'title': 'Talk to Doctor',
+      'subtitle': 'Free consultation',
+      'color': const Color(0xFF4CAF50), // Green color for free feature
+      'onTap': _navigateToTalkToDoctor,
+    },
+    {
+      'icon': Icons.calendar_today_outlined,
+      'title': 'Appointments',
+      'subtitle': 'Book & manage',
+      'color': const Color(0xFF7E57C2),
+      'onTap': _navigateToMedicalBot,
+    },
+    {
+      'icon': Icons.medical_information_outlined,
+      'title': 'Health Records',
+      'subtitle': 'View history',
+      'color': const Color(0xFFC5CAE9),
+      'onTap': () => _showSnackBar('Health Records coming soon'),
+    },
+    {
+      'icon': Icons.emergency_outlined,
+      'title': 'Emergency',
+      'subtitle': 'Urgent care',
+      'color': Colors.red.shade400,
+      'onTap': () => _showSnackBar('Emergency services'),
+    },
+  ];
+
 
     return GridView.builder(
       shrinkWrap: true,

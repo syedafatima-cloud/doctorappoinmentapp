@@ -7,7 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'screens/splash_screen.dart';
 import 'screens/homescreen.dart';
-import 'screens/admin_dashboard.dart';
+import 'screens/admin_screens/admin_dashboard.dart';
 import 'screens/registeration_screens/login_screen.dart';
 import 'screens/registeration_screens/signup_screen.dart';
 import 'services/appointment_service.dart';
@@ -18,7 +18,7 @@ import 'theme.dart';
 class EnvironmentConfig {
   // Load from environment variables with secure fallbacks
   static String get GROQ_API_KEY => _getEnvVar('GROQ_API_KEY', '');
-  static String get GROQ_MODEL => 'llama-3.1-70b-instant'; // Temporarily hardcoded to fix connection issue
+  static String get GROQ_MODEL => _getEnvVar('GROQ_MODEL',''); // Temporarily hardcoded to fix connection issue
   static String get DEBUG_MODE => _getEnvVar('DEBUG_MODE', 'false');
   static String get APP_NAME => _getEnvVar('APP_NAME', 'MediCare+');
   static String get APP_VERSION => _getEnvVar('APP_VERSION', '1.0.0');
@@ -146,7 +146,7 @@ class MyApp extends StatelessWidget {
             nextScreen: LoginPage(),
           ),
           routes: {
-            '/admin': (context) => const AdminDashboard(),
+            '/admin': (context) => const AdminDashboard(adminId: 'your_admin_id'),
             '/home': (context) => const HomeScreen(),
             '/signup': (context) => const Signup(),
           },

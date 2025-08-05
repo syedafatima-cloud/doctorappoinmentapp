@@ -56,6 +56,8 @@ class Appointment {
     );
   }
 
+  get notes => null;
+
   Map<String, dynamic> toFirestore() {
     return {
       'doctorId': doctorId,
