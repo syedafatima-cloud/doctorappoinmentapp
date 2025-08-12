@@ -1,9 +1,9 @@
-// screens/doctor_registration_screen.dart - WITH ADMIN APPROVAL SYSTEM
+// screens/doctor_registration_screen.dart - COMPLETE AND FIXED
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import '../services/doctor_register_service.dart';
-import '../services/doctor_firestore_service.dart';
+import '../../services/doctor_register_service.dart';
+import '../../services/doctor_firestore_service.dart';
 
 class DoctorRegistrationScreen extends StatefulWidget {
   final Map<String, String>? userData;
@@ -40,7 +40,7 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
   final List<String> _specializations = [
     'General Practice',
     'Cardiology',
-    'Dermatology',
+    'Dermatology', 
     'Endocrinology',
     'Gastroenterology',
     'Neurology',
@@ -57,7 +57,14 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
     'Anesthesiology',
     'Emergency Medicine',
     'Internal Medicine',
-    'Family Medicine'
+    'Family Medicine',
+    'Pulmonology',
+    'Rheumatology',
+    'Nephrology',
+    'Psychology',
+    'Obstetrics',
+    'Sports Medicine',
+    'Audiology',
   ];
 
   final List<String> _weekDays = [
@@ -92,6 +99,21 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
     _qualificationsController.dispose();
     _feeController.dispose();
     super.dispose();
+  }
+
+  // Format time in 12-hour format with AM/PM
+  String _formatTime(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  // Generate time slots in consistent 24-hour format for backend
+  String _formatTimeFor24Hour(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   Future<void> _pickImage() async {
@@ -230,7 +252,7 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
       debugPrint('Error picking image: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Error selecting image: Please try again'),
             backgroundColor: Colors.red,
           ),
@@ -253,12 +275,6 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
         }
       });
     }
-  }
-
-  String _formatTime(TimeOfDay time) {
-    final hour = time.hour.toString().padLeft(2, '0');
-    final minute = time.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
   }
 
   Future<void> _registerDoctor() async {
@@ -300,38 +316,121 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
               ),
             );
           }
+          setState(() => _isLoading = false);
           return;
         }
       } else {
         print('No image selected for upload');
       }
 
-      final doctorData = {
-  'fullName': _fullNameController.text.trim(),
-  'email': _emailController.text.trim(),
-  'phoneNumber': _phoneController.text.trim(),
-  'specialization': _selectedSpecialization!,
-  'licenseNumber': _licenseController.text.trim(),
-  'hospital': _hospitalController.text.trim(),
-  'address': _addressController.text.trim(),
-  'experienceYears': int.parse(_experienceController.text),
-  'qualifications': _qualificationsController.text.trim(),
-  'availableDays': _selectedDays,
-  'startTime': _formatTime(_startTime),
-  'endTime': _formatTime(_endTime),
-  'consultationFee': double.parse(_feeController.text),
-  'profileImageUrl': profileImageUrl ?? '',
-};
+      // Use 24-hour format for backend storage
+      final startTimeFormatted = _formatTimeFor24Hour(_startTime);
+      final endTimeFormatted = _formatTimeFor24Hour(_endTime);
+      
+      print('Start time: $startTimeFormatted, End time: $endTimeFormatted');
+      
+      // Validate required fields before creating data object
+      final fullName = _fullNameController.text.trim();
+      final email = _emailController.text.trim();
+      final phoneNumber = _phoneController.text.trim();
+      final licenseNumber = _licenseController.text.trim();
+      final hospital = _hospitalController.text.trim();
+      final address = _addressController.text.trim();
+      final qualifications = _qualificationsController.text.trim();
+      
+      // Validate numeric fields
+      int? experienceYears;
+      double? consultationFee;
+      
+      try {
+        experienceYears = int.parse(_experienceController.text.trim());
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid number for years of experience')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      try {
+        consultationFee = double.parse(_feeController.text.trim());
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid consultation fee')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // Check for empty required fields
+      if (fullName.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Full name is required')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      if (email.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email is required')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      if (phoneNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Phone number is required')),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      print('All validations passed, creating doctor data...');
+      
+      final doctorData = <String, dynamic>{
+        'fullName': fullName,
+        'name': fullName,
+        'email': email,
+        'phoneNumber': phoneNumber,
+        'phone': phoneNumber,
+        'specialization': _selectedSpecialization!,
+        'licenseNumber': licenseNumber.isNotEmpty ? licenseNumber : 'Not provided',
+        'hospital': hospital.isNotEmpty ? hospital : 'Not specified',
+        'address': address.isNotEmpty ? address : 'Not provided',
+        'experienceYears': experienceYears,
+        'experience': experienceYears,
+        'qualifications': qualifications.isNotEmpty ? qualifications : 'Not specified',
+        'availableDays': List<String>.from(_selectedDays),
+        'startTime': startTimeFormatted,
+        'endTime': endTimeFormatted,
+        'consultationFee': consultationFee,
+        'profileImageUrl': profileImageUrl ?? '',
+        'profileImage': profileImageUrl ?? '',
+        'rating': 0.0,
+        'isVerified': false,
+        'isActive': false,
+        'registrationDate': DateTime.now().toIso8601String(),
+        'createdAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
 
-// Submit for admin approval instead of direct registration
-final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorData);
+      print('Doctor data to submit:');
+      doctorData.forEach((key, value) {
+        print('  $key: $value (${value.runtimeType})');
+      });
 
-      if (requestId != null) {
-          if (mounted) {
-            _showRegistrationSubmittedDialog(); // This method already exists in your code
-          }
+      // Submit for admin approval
+      print('Calling submitDoctorRegistrationRequest...');
+      final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorData);
+      print('Request ID received: $requestId');
+
+      if (requestId != null && requestId.isNotEmpty) {
+        if (mounted) {
+          _showRegistrationSubmittedDialog();
         }
-       else {
+      } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -341,7 +440,9 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
           );
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Registration error: $e');
+      print('Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -357,7 +458,6 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
     }
   }
 
-  // NEW METHOD: Show registration submitted dialog
   void _showRegistrationSubmittedDialog() {
     showDialog(
       context: context,
@@ -447,8 +547,8 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-                Navigator.pushReplacementNamed(context, '/home'); // Navigate to home
+                Navigator.of(context).pop();
+                Navigator.pushReplacementNamed(context, '/home');
               },
               style: TextButton.styleFrom(
                 backgroundColor: Theme.of(context).primaryColor,
@@ -475,7 +575,6 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -549,7 +648,7 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
                       const SizedBox(height: 16),
                       _buildTimeSelector(),
                       const SizedBox(height: 16),
-                      _buildTextField(_feeController, 'Consultation Fee (USD)', Icons.attach_money, keyboardType: TextInputType.number),
+                      _buildPKRTextField(_feeController, 'Consultation Fee'),
 
                       const SizedBox(height: 36),
 
@@ -575,7 +674,6 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
     );
   }
 
-  // --- Enhanced Profile Image Section ---
   Widget _buildProfileImageSection(BuildContext context) {
     return Column(
       children: [
@@ -665,7 +763,6 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
     );
   }
 
-  // --- Modern Section Title ---
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 18, top: 8),
@@ -687,7 +784,6 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
     );
   }
 
-  // --- Modern Text Field ---
   Widget _buildTextField(
     TextEditingController controller,
     String label,
@@ -709,7 +805,7 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
           filled: true,
           fillColor: Theme.of(context).cardColor,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24), // Fully circular
+            borderRadius: BorderRadius.circular(24),
             borderSide: BorderSide(color: Theme.of(context).primaryColor),
           ),
           focusedBorder: OutlineInputBorder(
@@ -737,55 +833,6 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
     );
   }
 
-  // --- Modern Dropdown ---
-  Widget _buildSpecializationDropdown() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: DropdownButtonFormField<String>(
-        value: _selectedSpecialization,
-        decoration: InputDecoration(
-          labelText: 'Specialization',
-          labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
-          prefixIcon: Icon(Icons.medical_services, color: Theme.of(context).colorScheme.secondary),
-          filled: true,
-          fillColor: Theme.of(context).cardColor,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
-            borderSide: BorderSide(color: Theme.of(context).colorScheme.secondary, width: 2),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
-            borderSide: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.3)),
-          ),
-        ),
-        items: _specializations.map((String specialization) {
-          return DropdownMenuItem<String>(
-            value: specialization,
-            child: Text(
-              specialization,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-            ),
-          );
-        }).toList(),
-        onChanged: (String? newValue) {
-          setState(() {
-            _selectedSpecialization = newValue;
-          });
-        },
-        validator: (value) {
-          if (value == null) {
-            return 'Please select a specialization';
-          }
-          return null;
-        },
-      ),
-    );
-  }
-
-  // --- Modern Available Days Selector ---
   Widget _buildAvailableDaysSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -831,7 +878,6 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
     );
   }
 
-  // --- Modern Time Selector ---
   Widget _buildTimeSelector() {
     return Row(
       children: [
@@ -861,6 +907,119 @@ final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorDat
           ),
         ),
       ],
+    );
+  }
+
+  // PKR Currency TextField
+  Widget _buildPKRTextField(TextEditingController controller, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
+          prefixIcon: Container(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'PKR',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.secondary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '₨',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.secondary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          filled: true,
+          fillColor: Theme.of(context).cardColor,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(color: Theme.of(context).primaryColor),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(color: Theme.of(context).colorScheme.secondary, width: 2),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.3)),
+          ),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'This field is required';
+          }
+          try {
+            double.parse(value.trim());
+            return null;
+          } catch (e) {
+            return 'Please enter a valid amount';
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildSpecializationDropdown() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: DropdownButtonFormField<String>(
+        value: _selectedSpecialization,
+        decoration: InputDecoration(
+          labelText: 'Specialization',
+          labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)),
+          prefixIcon: Icon(Icons.medical_services, color: Theme.of(context).colorScheme.secondary),
+          filled: true,
+          fillColor: Theme.of(context).cardColor,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(color: Theme.of(context).colorScheme.secondary, width: 2),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.3)),
+          ),
+        ),
+        items: _specializations.map((String specialization) {
+          return DropdownMenuItem<String>(
+            value: specialization,
+            child: Text(
+              specialization,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            ),
+          );
+        }).toList(),
+        onChanged: (String? newValue) {
+          setState(() {
+            _selectedSpecialization = newValue;
+          });
+        },
+        validator: (value) {
+          if (value == null) {
+            return 'Please select a specialization';
+          }
+          return null;
+        },
+      ),
     );
   }
 }

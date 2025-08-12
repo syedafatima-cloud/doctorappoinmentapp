@@ -17,7 +17,25 @@ class AppointmentService {
     );
     await _notifications.initialize(settings);
   }
+  Future<bool> isSlotAvailable(String doctorId, String date, String time) async {
+    try {
+      final slotQuery = await _firestore
+          .collection('doctors')
+          .doc(doctorId)
+          .collection('time_slots')
+          .where('date', isEqualTo: date)
+          .where('time', isEqualTo: time)
+          .where('isAvailable', isEqualTo: true)
+          .where('isBooked', isEqualTo: false)
+          .limit(1)
+          .get();
 
+      return slotQuery.docs.isNotEmpty;
+    } catch (e) {
+      print('Error checking slot availability: $e');
+      return false;
+    }
+  }
   // Generate 15-minute time slots between start and end time
   List<String> generateTimeSlots(String startTime, String endTime) {
     final format = DateFormat("HH:mm");
@@ -35,73 +53,87 @@ class AppointmentService {
     return slots;
   }
 
-  // Fetch doctor's available slots for a specific date
+ // Updated method to fetch doctor's available slots for a specific date from time_slots collection
   Future<List<String>> fetchAvailableSlots(String doctorId, String selectedDate) async {
     try {
-      // Get doctor's document
-      final doctorDoc = await _firestore
+      print('🔍 Fetching slots for doctor: $doctorId, date: $selectedDate');
+      
+      // Query the doctor's time_slots subcollection for available slots
+      final timeSlotsQuery = await _firestore
           .collection('doctors')
           .doc(doctorId)
-          .get();
-
-      if (!doctorDoc.exists) {
-        throw Exception('Doctor not found');
-      }
-
-      // Get all available slots for the date
-      final doctorData = doctorDoc.data() as Map<String, dynamic>;
-      final availableSlots = doctorData['availableSlots'] as Map<String, dynamic>?;
-      
-      if (availableSlots == null || availableSlots[selectedDate] == null) {
-        return []; // No slots available for this date
-      }
-
-      final allSlots = List<String>.from(availableSlots[selectedDate]);
-
-      // Get already booked appointments for this doctor and date
-      final bookedAppointments = await _firestore
-          .collection('appointments')
-          .where('doctorId', isEqualTo: doctorId)
+          .collection('time_slots')
           .where('date', isEqualTo: selectedDate)
-          .where('status', whereIn: ['confirmed', 'pending'])
+          .where('isAvailable', isEqualTo: true)
+          .where('isBooked', isEqualTo: false)
           .get();
 
-      // Extract booked time slots
-      final bookedSlots = bookedAppointments.docs
-          .map((doc) => doc.data()['time'] as String)
-          .toList();
+      print('📋 Found ${timeSlotsQuery.docs.length} available slot documents');
 
-      // Return available slots (excluding booked ones)
-      final availableTimeSlots = allSlots
-          .where((slot) => !bookedSlots.contains(slot))
-          .toList();
+      // Extract time slots from the documents (already in 12-hour format)
+      List<String> availableSlots = [];
+      for (var doc in timeSlotsQuery.docs) {
+        Map<String, dynamic> data = doc.data();
+        String timeSlot = data['time'] ?? '';
+        if (timeSlot.isNotEmpty) {
+          availableSlots.add(timeSlot);
+        }
+        print('📅 Slot: ${data['time']} - Available: ${data['isAvailable']}, Booked: ${data['isBooked']}');
+      }
 
-      // Sort slots chronologically
-      availableTimeSlots.sort((a, b) {
-        final timeA = DateFormat("HH:mm").parse(a);
-        final timeB = DateFormat("HH:mm").parse(b);
-        return timeA.compareTo(timeB);
-      });
+      // Sort the time slots chronologically
+      availableSlots.sort((a, b) => _compareTimeSlots12Hour(a, b));
 
-      return availableTimeSlots;
+      print('✅ Returning ${availableSlots.length} available slots: $availableSlots');
+      return availableSlots;
+
     } catch (e) {
-      print('Error fetching available slots: $e');
+      print('❌ Error fetching available slots: $e');
       rethrow;
     }
   }
-
-  // Check if a specific slot is available
-  Future<bool> isSlotAvailable(String doctorId, String date, String time) async {
+  // Helper method to compare 12-hour format time slots for sorting
+  int _compareTimeSlots12Hour(String timeA, String timeB) {
     try {
-      final availableSlots = await fetchAvailableSlots(doctorId, date);
-      return availableSlots.contains(time);
+      // Convert 12-hour format to 24-hour for comparison
+      DateTime dateTimeA = _parseTime12Hour(timeA);
+      DateTime dateTimeB = _parseTime12Hour(timeB);
+      return dateTimeA.compareTo(dateTimeB);
     } catch (e) {
-      print('Error checking slot availability: $e');
-      return false;
+      print('Error comparing time slots: $e');
+      return 0;
     }
   }
 
-  // Book an appointment
+  // Helper method to parse 12-hour format time to DateTime for comparison
+  DateTime _parseTime12Hour(String time12) {
+    try {
+      // Handle formats like "9:00 AM", "2:30 PM"
+      final parts = time12.trim().split(' ');
+      if (parts.length != 2) throw FormatException('Invalid time format: $time12');
+      
+      final timePart = parts[0];
+      final amPm = parts[1].toUpperCase();
+      
+      final timeSplit = timePart.split(':');
+      if (timeSplit.length != 2) throw FormatException('Invalid time format: $time12');
+      
+      int hour = int.parse(timeSplit[0]);
+      int minute = int.parse(timeSplit[1]);
+      
+      // Convert to 24-hour format
+      if (amPm == 'PM' && hour != 12) {
+        hour += 12;
+      } else if (amPm == 'AM' && hour == 12) {
+        hour = 0;
+      }
+      
+      return DateTime(2024, 1, 1, hour, minute);
+    } catch (e) {
+      print('Error parsing time $time12: $e');
+      return DateTime(2024, 1, 1, 0, 0); // Default fallback
+    }
+  }
   Future<String> bookAppointment({
     required String doctorId,
     required String userName,
@@ -110,14 +142,32 @@ class AppointmentService {
     required String time,
     String? userEmail,
     String? symptoms,
-    String appointmentType = 'chat', // 'chat' or 'call'
+    String appointmentType = 'chat',
   }) async {
     try {
-      // Double-check slot availability
-      final isAvailable = await isSlotAvailable(doctorId, date, time);
-      if (!isAvailable) {
+      print('🔄 Starting appointment booking process...');
+      print('📋 Details: Doctor=$doctorId, Date=$date, Time=$time, User=$userName');
+
+      // First, find the specific time slot document in doctor's subcollection
+      final slotQuery = await _firestore
+          .collection('doctors')
+          .doc(doctorId)
+          .collection('time_slots')
+          .where('date', isEqualTo: date)
+          .where('time', isEqualTo: time)
+          .where('isAvailable', isEqualTo: true)
+          .where('isBooked', isEqualTo: false)
+          .limit(1)
+          .get();
+
+      if (slotQuery.docs.isEmpty) {
         throw Exception('Selected time slot is no longer available');
       }
+
+      final slotDoc = slotQuery.docs.first;
+      final slotId = slotDoc.id;
+      
+      print('✅ Found available slot document: $slotId');
 
       // Get doctor information
       final doctorDoc = await _firestore
@@ -125,7 +175,7 @@ class AppointmentService {
           .doc(doctorId)
           .get();
       
-      final doctorName = doctorDoc.data()?['name'] ?? 'Unknown Doctor';
+      final doctorName = doctorDoc.data()?['name'] ?? doctorDoc.data()?['fullName'] ?? 'Unknown Doctor';
 
       // Create appointment document
       final appointmentRef = await _firestore
@@ -141,94 +191,40 @@ class AppointmentService {
         'appointmentType': appointmentType,
         'symptoms': symptoms,
         'status': 'confirmed',
+        'slotId': slotId, // Reference to the time slot
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // Send notification to admin
-      await _sendAdminNotification(
-        appointmentId: appointmentRef.id,
-        doctorName: doctorName,
-        userName: userName,
-        date: date,
-        time: time,
-        appointmentType: appointmentType,
-      );
+      print('✅ Created appointment document: ${appointmentRef.id}');
+
+      // Update the time slot in doctor's subcollection to mark it as booked
+      await _firestore
+          .collection('doctors')
+          .doc(doctorId)
+          .collection('time_slots')
+          .doc(slotId)
+          .update({
+        'isAvailable': false,
+        'isBooked': true,
+        'bookedBy': userName,
+        'bookingId': appointmentRef.id,
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
+
+      print('✅ Updated time slot $slotId as booked in doctor subcollection');
 
       // Update appointment statistics
       await _updateAppointmentStats(doctorId, date);
 
+      print('🎉 Appointment booking completed successfully!');
       return appointmentRef.id;
+
     } catch (e) {
-      print('Error booking appointment: $e');
+      print('❌ Error booking appointment: $e');
       rethrow;
     }
   }
-
-  // Send notification to admin
-  Future<void> _sendAdminNotification({
-    required String appointmentId,
-    required String doctorName,
-    required String userName,
-    required String date,
-    required String time,
-    required String appointmentType,
-  }) async {
-    try {
-      // Save notification to Firestore for admin dashboard
-      await _firestore.collection('admin_notifications').add({
-        'type': 'new_appointment',
-        'title': 'New Appointment Booked',
-        'message': '$userName has booked a $appointmentType appointment with $doctorName on $date at $time',
-        'appointmentId': appointmentId,
-        'doctorName': doctorName,
-        'userName': userName,
-        'date': date,
-        'time': time,
-        'appointmentType': appointmentType,
-        'isRead': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      // Send local notification (if admin app is running)
-      await _sendLocalNotification(
-        title: 'New Appointment Booked',
-        body: '$userName - $doctorName ($date at $time)',
-      );
-
-    } catch (e) {
-      print('Error sending admin notification: $e');
-    }
-  }
-
-  // Send local notification
-  Future<void> _sendLocalNotification({
-    required String title,
-    required String body,
-  }) async {
-    const androidDetails = AndroidNotificationDetails(
-      'appointment_channel',
-      'Appointment Notifications',
-      channelDescription: 'Notifications for new appointments',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
-    
-    const iosDetails = DarwinNotificationDetails();
-    
-    const notificationDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
-
-    await _notifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      notificationDetails,
-    );
-  }
-
   // Update appointment statistics
   Future<void> _updateAppointmentStats(String doctorId, String date) async {
     try {

@@ -1,9 +1,10 @@
-
+import 'package:doctorappoinmentapp/models/doctor_model.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/admin_appointment_screen.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/admin_notification_screen.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/admin_statistics.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/admin_users_screen.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/doctor_register_management.dart';
+import 'package:doctorappoinmentapp/screens/admin_screens/doctor_update_screen.dart';
 import 'package:doctorappoinmentapp/services/admin_services.dart';
 import 'package:flutter/material.dart';
 
@@ -52,6 +53,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
@@ -383,6 +385,47 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 // Navigate to reports screen
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Reports feature coming soon!')),
+                );
+              },
+            ),
+            _buildFeatureCard(
+              'Doctor Live Status',
+              'Update doctor slots & patient status',
+              Icons.update, // or Icons.update if stethoscope is not available
+              Colors.deepPurple,
+              () {
+                // TODO: Replace with real doctor and appointments
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DoctorUpdateScreen(
+                      doctor: Doctor(
+                        id: 'doc1',
+                        name: 'Dr. Example',
+                        email: 'doc@example.com',
+                        phone: '1234567890',
+                        specialization: 'General',
+                        experience: 5,
+                        rating: 4.5,
+                        consultationFee: 100,
+                        profileImage: '',
+                        profileImageUrl: '',
+                        licenseNumber: '',
+                        hospital: 'City Hospital',
+                        address: '123 Main St',
+                        experienceYears: 5,
+                        qualifications: 'MBBS',
+                        isVerified: true,
+                        registrationDate: DateTime.now(),
+                        availableDays: ['Monday', 'Tuesday'],
+                        startTime: '09:00',
+                        endTime: '17:00',
+                      ),
+                      appointments: [],
+                      initialCurrentPatientNo: 1,
+                      initialSlots: const ['10:00 AM', '11:00 AM', '12:00 PM'],
+                    ),
+                  ),
                 );
               },
             ),

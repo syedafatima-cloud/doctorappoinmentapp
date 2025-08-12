@@ -122,7 +122,7 @@ class AdminService {
       
       // Count today's appointments
       final todayAppointments = futures[0].docs.where((doc) {
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
         return data['date'] == todayString;
       }).length;
 
@@ -179,16 +179,16 @@ class AdminService {
       // Calculate statistics
       final totalAppointments = appointments.docs.length;
       final completedAppointments = appointments.docs.where((doc) => 
-        (doc.data() as Map<String, dynamic>)['status'] == 'completed'
+        (doc.data())['status'] == 'completed'
       ).length;
       final cancelledAppointments = appointments.docs.where((doc) => 
-        (doc.data() as Map<String, dynamic>)['status'] == 'cancelled'
+        (doc.data())['status'] == 'cancelled'
       ).length;
       final pendingAppointments = appointments.docs.where((doc) => 
-        (doc.data() as Map<String, dynamic>)['status'] == 'pending'
+        (doc.data())['status'] == 'pending'
       ).length;
       final confirmedAppointments = appointments.docs.where((doc) => 
-        (doc.data() as Map<String, dynamic>)['status'] == 'confirmed'
+        (doc.data())['status'] == 'confirmed'
       ).length;
 
       // Calculate rates
@@ -205,7 +205,7 @@ class AdminService {
       // Get top specializations
       final specializations = <String, int>{};
       for (var doc in doctors.docs) {
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
         final spec = data['specialization'] as String?;
         if (spec != null) {
           specializations[spec] = (specializations[spec] ?? 0) + 1;
@@ -227,18 +227,18 @@ class AdminService {
         'appointmentCancellationRate': cancellationRate,
         'totalRevenue': totalRevenue,
         'activeDoctors': doctors.docs.where((doc) => 
-          (doc.data() as Map<String, dynamic>)['status'] == 'approved'
+          (doc.data())['status'] == 'approved'
         ).length,
         'pendingDoctors': doctors.docs.where((doc) => 
-          (doc.data() as Map<String, dynamic>)['status'] == 'pending'
+          (doc.data())['status'] == 'pending'
         ).length,
         'rejectedDoctors': doctors.docs.where((doc) => 
-          (doc.data() as Map<String, dynamic>)['status'] == 'rejected'
+          (doc.data())['status'] == 'rejected'
         ).length,
         'totalUsers': users.docs.length,
         'newUsers': users.docs.length,
         'activeUsers': users.docs.where((doc) => 
-          (doc.data() as Map<String, dynamic>)['isActive'] == true
+          (doc.data())['isActive'] == true
         ).length,
         'activeToday': _calculateActiveToday(),
         'userRetentionRate': 85.0, // This would need more complex calculation

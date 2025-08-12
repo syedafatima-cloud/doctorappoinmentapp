@@ -22,7 +22,7 @@ class _AdminAppointmentsScreenState extends State<AdminAppointmentsScreen> with 
   List<Appointment> _completedAppointments = [];
   
   bool _isLoading = true;
-  String _selectedDateFilter = 'all';
+  final String _selectedDateFilter = 'all';
 
   @override
   void initState() {

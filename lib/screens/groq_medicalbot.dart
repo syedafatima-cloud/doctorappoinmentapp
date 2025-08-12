@@ -6,7 +6,7 @@ import 'package:doctorappoinmentapp/services/notification_service.dart';
 import 'package:doctorappoinmentapp/services/groq_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:doctorappoinmentapp/screens/doctor_register_screen.dart';
+import 'package:doctorappoinmentapp/screens/registeration_screens/doctor_register_screen.dart';
 
 class GroqMedicalBot extends StatefulWidget {
   const GroqMedicalBot({super.key});

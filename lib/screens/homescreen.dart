@@ -1,11 +1,16 @@
-import 'package:doctorappoinmentapp/screens/appointment_booking.dart';
+import 'package:doctorappoinmentapp/screens/appointment_booking_screen.dart';
+import 'package:doctorappoinmentapp/screens/disease_selection_screen.dart';
+import 'package:doctorappoinmentapp/screens/registeration_screens/login_screen.dart';
+import 'package:doctorappoinmentapp/screens/splash_screen.dart';
 import 'package:doctorappoinmentapp/screens/talk_to_doc_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:doctorappoinmentapp/screens/groq_medicalbot.dart';
-import 'package:doctorappoinmentapp/screens/doctor_register_screen.dart';
+import 'package:doctorappoinmentapp/screens/registeration_screens/doctor_register_screen.dart';
 import 'package:doctorappoinmentapp/models/doctor_model.dart';
 import 'package:doctorappoinmentapp/services/appointment_service.dart';
 import 'package:doctorappoinmentapp/screens/settings_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -195,7 +200,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
   }
-
+  void _navigateToAppointments() {
+  Navigator.push(
+    context,
+    PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => const DiseaseSelectionScreen(),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1.0, 0.0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeInOut,
+          )),
+          child: child,
+        );
+      },
+    ),
+  );
+}
  
 
   void _showSnackBar(String message) {
@@ -222,6 +246,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             floating: false,
             pinned: true,
             backgroundColor: Theme.of(context).primaryColor,
+            leading: Container(
+              margin: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.logout, color: Colors.white, size: 18),
+                onPressed: () async {
+                  // Clear user sessison
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('isLoggedIn', false);
+                  await prefs.setBool('isAdmin', false);
+                  
+                  // Sign out from Firebase
+                  await FirebaseAuth.instance.signOut();
+                  
+                  // Navigate to login screen (using the SplashScreen -> LoginPage flow)
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const SplashScreen(
+                        nextScreen: LoginPage(),
+                      ),
+                    ),
+                    (route) => false, // Remove all previous routes
+                  );
+                },
+              ),
+            ),
             flexibleSpace: FlexibleSpaceBar(
               title: const Text(
                 'MediCare+',
@@ -651,7 +705,7 @@ SizedBox(
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => AppointmentBookingPage(doctor: doctor),
+          builder: (context) => AppointmentBookingScreen(),
         ),
       );
     },
@@ -806,7 +860,7 @@ SizedBox(
   }
 
   Widget _buildQuickActionsGrid() {
-    final actions = [
+  final actions = [
     {
       'icon': Icons.chat_outlined,
       'title': 'Talk to Doctor',
@@ -819,7 +873,7 @@ SizedBox(
       'title': 'Appointments',
       'subtitle': 'Book & manage',
       'color': const Color(0xFF7E57C2),
-      'onTap': _navigateToMedicalBot,
+      'onTap': _navigateToAppointments, // Changed this line
     },
     {
       'icon': Icons.medical_information_outlined,
@@ -837,29 +891,28 @@ SizedBox(
     },
   ];
 
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12, // Reduced from 16
-        mainAxisSpacing: 12, // Reduced from 16
-        childAspectRatio: 1.4, // Increased from 1.2 to make cards wider
-      ),
-      itemCount: actions.length,
-      itemBuilder: (context, index) {
-        final action = actions[index];
-        return _buildQuickActionCard(
-          icon: action['icon'] as IconData,
-          title: action['title'] as String,
-          subtitle: action['subtitle'] as String,
-          color: action['color'] as Color,
-          onTap: action['onTap'] as VoidCallback,
-        );
-      },
-    );
-  }
+  return GridView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 2,
+      crossAxisSpacing: 12, // Reduced from 16
+      mainAxisSpacing: 12, // Reduced from 16
+      childAspectRatio: 1.4, // Increased from 1.2 to make cards wider
+    ),
+    itemCount: actions.length,
+    itemBuilder: (context, index) {
+      final action = actions[index];
+      return _buildQuickActionCard(
+        icon: action['icon'] as IconData,
+        title: action['title'] as String,
+        subtitle: action['subtitle'] as String,
+        color: action['color'] as Color,
+        onTap: action['onTap'] as VoidCallback,
+      );
+    },
+  );
+}
 
   Widget _buildQuickActionCard({
     required IconData icon,

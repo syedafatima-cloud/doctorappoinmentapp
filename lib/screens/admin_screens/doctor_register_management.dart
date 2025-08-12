@@ -39,22 +39,71 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
     setState(() => _isLoading = true);
     
     try {
+      print('🔄 Starting to load data...'); // Debug print
+      
+      // Test each service call individually
+      print('📞 Calling getRegistrationRequestsByStatus for pending...');
+      final pendingFuture = _doctorService.getRegistrationRequestsByStatus('pending');
+      
+      print('📞 Calling getRegistrationRequestsByStatus for approved...');
+      final approvedFuture = _doctorService.getRegistrationRequestsByStatus('approved');
+      
+      print('📞 Calling getRegistrationRequestsByStatus for rejected...');
+      final rejectedFuture = _doctorService.getRegistrationRequestsByStatus('rejected');
+      
+      print('📞 Calling getRegistrationStatistics...');
+      final statsFuture = _doctorService.getRegistrationStatistics();
+      
       final futures = await Future.wait([
-        _doctorService.getRegistrationRequestsByStatus('pending'),
-        _doctorService.getRegistrationRequestsByStatus('approved'),
-        _doctorService.getRegistrationRequestsByStatus('rejected'),
-        _doctorService.getRegistrationStatistics(),
+        pendingFuture,
+        approvedFuture,
+        rejectedFuture,
+        statsFuture,
       ]);
       
+      print('✅ All futures completed'); // Debug print
+      print('📊 Raw futures data:');
+      print('  - Pending raw: ${futures[0]}');
+      print('  - Approved raw: ${futures[1]}');
+      print('  - Rejected raw: ${futures[2]}');
+      print('  - Stats raw: ${futures[3]}');
+      
+      // Safe null checking for lengths
+      final pendingList = futures[0] as List<Map<String, dynamic>>? ?? [];
+      final approvedList = futures[1] as List<Map<String, dynamic>>? ?? [];
+      final rejectedList = futures[2] as List<Map<String, dynamic>>? ?? [];
+      final stats = futures[3] as Map<String, int>? ?? {};
+      
+      print('📈 Processed data:');
+      print('  - Pending: ${pendingList.length} items');
+      print('  - Approved: ${approvedList.length} items');
+      print('  - Rejected: ${rejectedList.length} items');
+      print('  - Stats: $stats');
+      
+      // Print first pending request if available
+      if (pendingList.isNotEmpty) {
+        print('📋 First pending request sample: ${pendingList[0]}');
+      }
+      
       setState(() {
-        _pendingRequests = futures[0] as List<Map<String, dynamic>>;
-        _approvedRequests = futures[1] as List<Map<String, dynamic>>;
-        _rejectedRequests = futures[2] as List<Map<String, dynamic>>;
-        _statistics = futures[3] as Map<String, int>;
+        _pendingRequests = pendingList;
+        _approvedRequests = approvedList;
+        _rejectedRequests = rejectedList;
+        _statistics = stats;
         _isLoading = false;
       });
-    } catch (e) {
-      setState(() => _isLoading = false);
+      
+      print('🎯 State updated successfully');
+    } catch (e, stackTrace) {
+      print('❌ Error in _loadData: $e');
+      print('📍 Stack trace: $stackTrace');
+      setState(() {
+        _pendingRequests = [];
+        _approvedRequests = [];
+        _rejectedRequests = [];
+        _statistics = {};
+        _isLoading = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -76,6 +125,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
             SnackBar(
               content: Text('Doctor ${requestData['fullName']} approved successfully!'),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
             ),
           );
           _loadData(); // Refresh data
@@ -89,6 +139,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
           SnackBar(
             content: Text('Error approving doctor: ${e.toString()}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -108,6 +159,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
               SnackBar(
                 content: Text('Doctor ${requestData['fullName']} registration rejected'),
                 backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 2),
               ),
             );
             _loadData(); // Refresh data
@@ -121,6 +173,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
             SnackBar(
               content: Text('Error rejecting doctor: ${e.toString()}'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
@@ -136,31 +189,30 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Row(
             children: [
-              Icon(Icons.cancel, color: Colors.red),
-              SizedBox(width: 8),
-              Text('Reject Registration'),
+              Icon(Icons.cancel, color: Theme.of(context).colorScheme.error, size: 20),
+              const SizedBox(width: 8),
+              const Text('Reject Registration', style: TextStyle(fontSize: 16)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Please provide a reason for rejecting this doctor registration:',
-                style: TextStyle(fontSize: 14),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               TextField(
                 controller: reasonController,
-                maxLines: 3,
-                decoration: InputDecoration(
+                maxLines: 2,
+                style: const TextStyle(fontSize: 14),
+                decoration: const InputDecoration(
                   hintText: 'Enter rejection reason...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  contentPadding: EdgeInsets.all(12),
                 ),
               ),
             ],
@@ -176,8 +228,12 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                   Navigator.of(context).pop(reasonController.text.trim());
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Reject', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text('Reject', style: TextStyle(fontSize: 14)),
             ),
           ],
         );
@@ -190,42 +246,44 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
       context: context,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
+            width: MediaQuery.of(context).size.width * 0.85,
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.8,
+              maxHeight: MediaQuery.of(context).size.height * 0.75,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Header
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).primaryColor,
+                    color: Theme.of(context).colorScheme.primary,
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
+                      topLeft: Radius.circular(12),
+                      topRight: Radius.circular(12),
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.person, color: Colors.white),
+                      Icon(Icons.person, color: Theme.of(context).colorScheme.onPrimary, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           requestData['fullName'] ?? 'Doctor Details',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close, color: Colors.white),
+                        icon: Icon(Icons.close, color: Theme.of(context).colorScheme.onPrimary, size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       ),
                     ],
                   ),
@@ -233,7 +291,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                 // Content
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -241,8 +299,8 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                         if (requestData['profileImageUrl'] != null && requestData['profileImageUrl'].isNotEmpty)
                           Center(
                             child: Container(
-                              width: 100,
-                              height: 100,
+                              width: 80,
+                              height: 80,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 image: DecorationImage(
@@ -252,7 +310,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                               ),
                             ),
                           ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         
                         _buildDetailRow('Full Name', requestData['fullName'] ?? 'N/A'),
                         _buildDetailRow('Email', requestData['email'] ?? 'N/A'),
@@ -262,7 +320,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                         _buildDetailRow('Hospital/Clinic', requestData['hospital'] ?? 'N/A'),
                         _buildDetailRow('Experience', '${requestData['experienceYears'] ?? 0} years'),
                         _buildDetailRow('Consultation Fee', '\$${requestData['consultationFee'] ?? 0}'),
-                        _buildDetailRow('Available Days', (requestData['availableDays'] as List?)?.join(', ') ?? 'N/A'),
+                        _buildDetailRow('Available Days', (requestData['availableDays'] as List<dynamic>?)?.cast<String>()?.join(', ') ?? 'N/A'),
                         _buildDetailRow('Working Hours', '${requestData['startTime'] ?? 'N/A'} - ${requestData['endTime'] ?? 'N/A'}'),
                         _buildDetailRow('Address', requestData['address'] ?? 'N/A'),
                         _buildDetailRow('Qualifications', requestData['qualifications'] ?? 'N/A', isMultiLine: true),
@@ -270,12 +328,12 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                         
                         // Status-specific information
                         if (requestData['status'] == 'approved') ...[
-                          const Divider(),
+                          const Divider(height: 20),
                           _buildDetailRow('Approved Date', _formatDate(requestData['reviewDate'])),
                           _buildDetailRow('Approved By', requestData['reviewedBy'] ?? 'N/A'),
                         ],
                         if (requestData['status'] == 'rejected') ...[
-                          const Divider(),
+                          const Divider(height: 20),
                           _buildDetailRow('Rejected Date', _formatDate(requestData['reviewDate'])),
                           _buildDetailRow('Rejected By', requestData['reviewedBy'] ?? 'N/A'),
                           _buildDetailRow('Rejection Reason', requestData['rejectionReason'] ?? 'N/A', isMultiLine: true),
@@ -294,22 +352,22 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
 
   Widget _buildDetailRow(String label, String value, {bool isMultiLine = false}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: Colors.grey,
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.primary,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             value,
-            style: const TextStyle(fontSize: 16),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 14),
             maxLines: isMultiLine ? null : 1,
             overflow: isMultiLine ? null : TextOverflow.ellipsis,
           ),
@@ -330,24 +388,28 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
 
   Widget _buildStatisticsCard() {
     return Card(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(12),
+      color: Theme.of(context).colorScheme.surface,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Registration Statistics',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildStatItem('Pending', _statistics['pending'] ?? 0, Colors.orange),
                 _buildStatItem('Approved', _statistics['approved'] ?? 0, Colors.green),
                 _buildStatItem('Rejected', _statistics['rejected'] ?? 0, Colors.red),
-                _buildStatItem('Active Doctors', _statistics['totalActiveDoctors'] ?? 0, Colors.blue),
+                _buildStatItem('Active', _statistics['totalActiveDoctors'] ?? 0, Theme.of(context).colorScheme.primary),
               ],
             ),
           ],
@@ -360,24 +422,24 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
             count.toString(),
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: color,
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(fontSize: 12),
+          style: const TextStyle(fontSize: 10),
           textAlign: TextAlign.center,
         ),
       ],
@@ -385,7 +447,16 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
   }
 
   Widget _buildRequestsList(List<Map<String, dynamic>> requests, String status) {
-    if (requests.isEmpty) {
+    print('🏗️ Building requests list for $status with ${requests.length} items'); // Debug print
+    
+    // Additional null safety check
+    final safeRequests = requests ?? [];
+    
+    print('🔍 Safe requests length: ${safeRequests.length}');
+    print('🔍 Safe requests content: $safeRequests');
+    
+    if (safeRequests.isEmpty) {
+      print('📭 No requests found for $status - showing empty state');
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -394,26 +465,40 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
               status == 'pending' ? Icons.hourglass_empty :
               status == 'approved' ? Icons.check_circle :
               Icons.cancel,
-              size: 64,
-              color: Colors.grey,
+              size: 48,
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
               'No $status requests found',
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () {
+                print('🔄 Manual refresh button pressed');
+                _loadData();
+              },
+              child: const Text('Refresh'),
             ),
           ],
         ),
       );
     }
 
+    print('📋 Building ListView with ${safeRequests.length} items');
     return RefreshIndicator(
       onRefresh: _loadData,
+      color: Theme.of(context).colorScheme.primary,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: requests.length,
+        padding: const EdgeInsets.all(12),
+        itemCount: safeRequests.length,
         itemBuilder: (context, index) {
-          final request = requests[index];
+          print('🏗️ Building card for index $index');
+          final request = safeRequests[index];
+          print('📄 Request data: $request');
           return _buildRequestCard(request, status);
         },
       ),
@@ -422,9 +507,10 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
 
   Widget _buildRequestCard(Map<String, dynamic> request, String status) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
+      color: Theme.of(context).colorScheme.surface,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -432,11 +518,11 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
               children: [
                 // Profile Image
                 Container(
-                  width: 60,
-                  height: 60,
+                  width: 45,
+                  height: 45,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.grey[200],
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
                     image: request['profileImageUrl'] != null && request['profileImageUrl'].isNotEmpty
                         ? DecorationImage(
                             image: NetworkImage(request['profileImageUrl']),
@@ -445,98 +531,117 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                         : null,
                   ),
                   child: request['profileImageUrl'] == null || request['profileImageUrl'].isEmpty
-                      ? const Icon(Icons.person, size: 30, color: Colors.grey)
+                      ? Icon(Icons.person, size: 24, color: Theme.of(context).colorScheme.primary)
                       : null,
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         request['fullName'] ?? 'Unknown Doctor',
-                        style: const TextStyle(
-                          fontSize: 18,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontSize: 15,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         request['specialization'] ?? 'Unknown Specialization',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
                         request['hospital'] ?? 'Unknown Hospital',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: status == 'pending' ? Colors.orange :
                            status == 'approved' ? Colors.green :
                            Colors.red,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     status.toUpperCase(),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Row(
               children: [
-                Icon(Icons.email, size: 16, color: Colors.grey[600]),
+                Icon(Icons.email, size: 14, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 4),
-                Text(request['email'] ?? 'N/A'),
-                const Spacer(),
-                Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+                Expanded(
+                  child: Text(
+                    request['email'] ?? 'N/A',
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(Icons.access_time, size: 14, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 4),
-                Text(_formatDate(request['submissionDate'])),
+                Text(
+                  _formatDate(request['submissionDate']),
+                  style: const TextStyle(fontSize: 12),
+                ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _showDoctorDetails(request),
-                    icon: const Icon(Icons.visibility),
-                    label: const Text('View Details'),
+                    icon: const Icon(Icons.visibility, size: 16),
+                    label: const Text('View', style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                    ),
                   ),
                 ),
                 if (status == 'pending') ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => _approveRequest(request['requestId'], request),
-                      icon: const Icon(Icons.check),
-                      label: const Text('Approve'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Approve', style: TextStyle(fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => _rejectRequest(request['requestId'], request),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Reject'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      icon: const Icon(Icons.close, size: 16),
+                      label: const Text('Reject', style: TextStyle(fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      ),
                     ),
                   ),
                 ],
@@ -552,24 +657,26 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Doctor Registration Requests'),
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
+        title: const Text('Doctor Requests', style: TextStyle(fontSize: 18)),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         actions: [
           IconButton(
             onPressed: _loadData,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, size: 20),
           ),
         ],
         bottom: TabBar(
           controller: _tabController,
+          labelStyle: const TextStyle(fontSize: 11),
+          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
           tabs: [
             Tab(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.hourglass_empty),
-                  const SizedBox(width: 4),
+                  const Icon(Icons.hourglass_empty, size: 14),
+                  const SizedBox(width: 2),
                   Text('Pending (${_statistics['pending'] ?? 0})'),
                 ],
               ),
@@ -578,8 +685,8 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.check_circle),
-                  const SizedBox(width: 4),
+                  const Icon(Icons.check_circle, size: 14),
+                  const SizedBox(width: 2),
                   Text('Approved (${_statistics['approved'] ?? 0})'),
                 ],
               ),
@@ -588,20 +695,25 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.cancel),
-                  const SizedBox(width: 4),
+                  const Icon(Icons.cancel, size: 14),
+                  const SizedBox(width: 2),
                   Text('Rejected (${_statistics['rejected'] ?? 0})'),
                 ],
               ),
             ),
           ],
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
+          labelColor: Theme.of(context).colorScheme.onPrimary,
+          unselectedLabelColor: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+          indicatorColor: Theme.of(context).colorScheme.onPrimary,
         ),
       ),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: CircularProgressIndicator(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            )
           : Column(
               children: [
                 _buildStatisticsCard(),

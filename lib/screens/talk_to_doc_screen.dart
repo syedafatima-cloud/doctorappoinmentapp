@@ -47,7 +47,7 @@ class _TalkToDoctorScreenState extends State<TalkToDoctorScreen>
   
   String? _lastAudioPath;
   bool _isRecording = false;
-  bool _isDoctorOnline = true;
+  final bool _isDoctorOnline = true;
   bool _isPlayingAudio = false;
   String? _currentPlayingAudio;
   
