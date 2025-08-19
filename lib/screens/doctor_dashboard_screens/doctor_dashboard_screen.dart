@@ -6,11 +6,13 @@ import 'package:doctorappoinmentapp/screens/doctor_dashboard_screens/doctor_earn
 import 'package:doctorappoinmentapp/screens/doctor_dashboard_screens/doctor_patient_screen.dart';
 import 'package:doctorappoinmentapp/screens/doctor_dashboard_screens/doctor_profile_edit_screen.dart';
 import 'package:doctorappoinmentapp/screens/doctor_dashboard_screens/doctor_timeslot_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:doctorappoinmentapp/models/doctor_model.dart';
+import 'package:doctorappoinmentapp/models/doctor_register_model.dart';
 import 'package:doctorappoinmentapp/services/appointment_service.dart';
 import 'package:doctorappoinmentapp/services/doctor_register_service.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DoctorDashboard extends StatefulWidget {
   final String doctorId;
@@ -25,7 +27,8 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
   final AppointmentService _appointmentService = AppointmentService();
   final DoctorRegistrationService _doctorService = DoctorRegistrationService();
   
-  Doctor? _doctor;
+  // Changed from Doctor? to DoctorRegistration? to match the service return type
+  DoctorRegistration? _doctor;
   Map<String, int> _dashboardStats = {};
   List<Appointment> _todayAppointments = [];
   bool _loading = true;
@@ -42,7 +45,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     setState(() => _loading = true);
     
     try {
-      // Load doctor data
+      // Load doctor data - getDoctorById returns DoctorRegistration?, not Doctor?
       final doctor = await _doctorService.getDoctorById(widget.doctorId);
       
       // Load today's appointments
@@ -66,7 +69,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       final pendingToday = doctorAppointments.where((apt) => apt.status == 'confirmed').length;
       
       setState(() {
-        _doctor = doctor as Doctor?;
+        _doctor = doctor; // No casting needed now
         _todayAppointments = doctorAppointments;
         _dashboardStats = {
           'todayAppointments': doctorAppointments.length,
@@ -77,6 +80,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
         _loading = false;
       });
     } catch (e) {
+      print('Error loading dashboard: $e'); // Added for debugging
       setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -88,7 +92,27 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       }
     }
   }
-
+  Future<void> _handleLogout() async {
+  try {
+    // Clear SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    
+    // Sign out from Firebase
+    await FirebaseAuth.instance.signOut();
+    
+    // Navigate back to login screen
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  } catch (e) {
+    print('Error during logout: $e');
+    // Still navigate back even if there's an error
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  }
+}
   Future<int> _getTotalAppointments() async {
     try {
       final appointments = await _appointmentService.getAppointmentsForAdmin();
@@ -113,6 +137,10 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
+         leading: IconButton(  // ✅ ADD THIS
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _handleLogout(),  // ✅ ADD THIS
+        ),
         actions: [
           // Online/Offline Toggle
           Container(
@@ -265,7 +293,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Welcome back, Dr. ${_doctor?.name ?? 'Doctor'}!',
+                      'Welcome back, Dr. ${_doctor?.fullName ?? 'Doctor'}!', // Changed from name to fullName
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
@@ -545,13 +573,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
               Colors.teal,
               () => _navigateToProfile(),
             ),
-            _buildFeatureCard(
-              'Update Profile',
-              'Edit profile details',
-              Icons.edit,
-              Theme.of(context).colorScheme.secondary,
-              () => _navigateToUpdateProfile(),
-            ),
+           
           ],
         ),
       ],
@@ -749,20 +771,20 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
   }
 
   void _navigateToAppointments() {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => DoctorAppointmentsScreen(
-        doctorId: widget.doctorId,
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DoctorAppointmentsScreen(
+          doctorId: widget.doctorId,
+        ),
       ),
-    ),
-  ).then((result) {
-    // Refresh dashboard when returning from appointments screen
-    if (result == true) {
-      _loadDashboardData();
-    }
-  });
-}
+    ).then((result) {
+      // Refresh dashboard when returning from appointments screen
+      if (result == true) {
+        _loadDashboardData();
+      }
+    });
+  }
 
   void _navigateToTimeSlots() {
     Navigator.push(
@@ -770,7 +792,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       MaterialPageRoute(
         builder: (context) => DoctorTimeSlotsManagement(
           doctorId: widget.doctorId,
-          doctorName: _doctor?.name ?? 'Doctor',
+          doctorName: _doctor?.fullName ?? 'Doctor', // Changed from name to fullName
         ),
       ),
     );
@@ -782,7 +804,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       MaterialPageRoute(
         builder: (context) => DoctorPatientsScreen(
           doctorId: widget.doctorId,
-          doctorName: _doctor?.name ?? 'Doctor',
+          doctorName: _doctor?.fullName ?? 'Doctor', // Changed from name to fullName
         ),
       ),
     );
@@ -794,7 +816,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
       MaterialPageRoute(
         builder: (context) => DoctorEarningsScreen(
           doctorId: widget.doctorId,
-          doctorName: _doctor?.name ?? 'Doctor',
+          doctorName: _doctor?.fullName ?? 'Doctor', // Changed from name to fullName
         ),
       ),
     );
@@ -813,34 +835,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
     }
   }
 
-  void _navigateToUpdateProfile() {
-  if (_doctor != null) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DoctorUpdateScreen(
-          doctor: _doctor!,
-          appointments: _todayAppointments,
-          initialCurrentPatientNo: _currentPatientNo,
-          initialSlots: [], // You can populate this with current available slots if needed
-        ),
-      ),
-    ).then((result) {
-      // Refresh dashboard if profile was updated
-      if (result == true) {
-        _loadDashboardData();
-      }
-    });
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Doctor information not loaded yet. Please try again.'),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
-}
-
+  
   void _showLogoutDialog() {
     showDialog(
       context: context,

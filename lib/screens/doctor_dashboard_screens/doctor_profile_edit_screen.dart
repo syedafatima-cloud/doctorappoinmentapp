@@ -1,8 +1,8 @@
 // screens/doctor_screens/doctor_profile_edit_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:doctorappoinmentapp/models/doctor_model.dart';
-import 'doctor_update_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class DoctorProfileEditScreen extends StatefulWidget {
   final String doctorId;
@@ -17,109 +17,209 @@ class DoctorProfileEditScreen extends StatefulWidget {
 }
 
 class _DoctorProfileEditScreenState extends State<DoctorProfileEditScreen> {
-  Doctor? doctor;
-  bool isLoading = true;
-  bool isLoadingReviews = true;
-  List<Map<String, dynamic>> reviews = [];
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = true;
+  bool _isSaving = false;
+  
+  // Controllers for form fields
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _specializationController = TextEditingController();
+  final _hospitalController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _qualificationsController = TextEditingController();
+  final _experienceController = TextEditingController();
+  final _consultationFeeController = TextEditingController();
+  final _bioController = TextEditingController();
+  
+  String? _profileImageUrl;
+  File? _selectedImage;
+  List<String> _availableDays = [];
+  String _startTime = '09:00';
+  String _endTime = '17:00';
+  
+  final List<String> _weekDays = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+  ];
   
   @override
   void initState() {
     super.initState();
-    _loadDoctorProfile();
-    _loadReviews();
+    _loadDoctorData();
+  }
+  
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _specializationController.dispose();
+    _hospitalController.dispose();
+    _addressController.dispose();
+    _qualificationsController.dispose();
+    _experienceController.dispose();
+    _consultationFeeController.dispose();
+    _bioController.dispose();
+    super.dispose();
   }
 
-  Future<void> _loadDoctorProfile() async {
+  Future<void> _loadDoctorData() async {
     try {
-      final doc = await FirebaseFirestore.instance
+      // Try to find doctor in doctors collection first
+      DocumentSnapshot doc = await FirebaseFirestore.instance
           .collection('doctors')
           .doc(widget.doctorId)
           .get();
       
+      Map<String, dynamic>? data;
+      
       if (doc.exists) {
-        final data = doc.data()!;
-        data['id'] = doc.id;
+        data = doc.data() as Map<String, dynamic>;
+      } else {
+        // Check pending_doctor_registrations
+        final pendingQuery = await FirebaseFirestore.instance
+            .collection('pending_doctor_registrations')
+            .where('approvedDoctorId', isEqualTo: widget.doctorId)
+            .where('status', isEqualTo: 'approved')
+            .get();
+        
+        if (pendingQuery.docs.isNotEmpty) {
+          data = pendingQuery.docs.first.data();
+        }
+      }
+      
+      if (data != null) {
         setState(() {
-          doctor = Doctor.fromMap(data);
-          isLoading = false;
+          _nameController.text = data!['fullName'] ?? data['name'] ?? '';
+          _emailController.text = data['email'] ?? '';
+          _phoneController.text = data['phoneNumber'] ?? data['phone'] ?? '';
+          _specializationController.text = data['specialization'] ?? '';
+          _hospitalController.text = data['hospital'] ?? '';
+          _addressController.text = data['address'] ?? '';
+          _qualificationsController.text = data['qualifications'] ?? '';
+          _experienceController.text = (data['experienceYears'] ?? data['experience'] ?? 0).toString();
+          _consultationFeeController.text = (data['consultationFee'] ?? 0).toString();
+          _bioController.text = data['bio'] ?? '';
+          _profileImageUrl = data['profileImageUrl'];
+          _availableDays = List<String>.from(data['availableDays'] ?? []);
+          _startTime = data['startTime'] ?? '09:00';
+          _endTime = data['endTime'] ?? '17:00';
+          _isLoading = false;
         });
+      } else {
+        setState(() => _isLoading = false);
+        _showError('Doctor profile not found');
       }
     } catch (e) {
-      setState(() => isLoading = false);
-      _showError('Error loading doctor profile: ${e.toString()}');
+      setState(() => _isLoading = false);
+      _showError('Error loading profile: ${e.toString()}');
     }
   }
 
-  Future<void> _loadReviews() async {
+  Future<void> _pickImage() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('reviews')
-          .where('doctorId', isEqualTo: widget.doctorId)
-          .orderBy('createdAt', descending: true)
-          .limit(10)
-          .get();
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
       
-      setState(() {
-        reviews = snapshot.docs.map((doc) => {
-          'id': doc.id,
-          ...doc.data(),
-        }).toList();
-        isLoadingReviews = false;
-      });
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
     } catch (e) {
-      setState(() => isLoadingReviews = false);
+      _showError('Error picking image: ${e.toString()}');
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    setState(() => _isSaving = true);
+    
+    try {
+      final updateData = {
+        'fullName': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'phoneNumber': _phoneController.text.trim(),
+        'specialization': _specializationController.text.trim(),
+        'hospital': _hospitalController.text.trim(),
+        'address': _addressController.text.trim(),
+        'qualifications': _qualificationsController.text.trim(),
+        'experienceYears': int.tryParse(_experienceController.text) ?? 0,
+        'consultationFee': double.tryParse(_consultationFeeController.text) ?? 0.0,
+        'bio': _bioController.text.trim(),
+        'availableDays': _availableDays,
+        'startTime': _startTime,
+        'endTime': _endTime,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      
+      // TODO: Handle image upload if _selectedImage is not null
+      if (_selectedImage != null) {
+        // uploadedUrl = await _uploadImage(_selectedImage!);
+        // updateData['profileImageUrl'] = uploadedUrl;
+        _showSuccess('Image upload feature coming soon!');
+      }
+      
+      // Update in doctors collection
+      try {
+        await FirebaseFirestore.instance
+            .collection('doctors')
+            .doc(widget.doctorId)
+            .update(updateData);
+      } catch (e) {
+        // If not found in doctors, update in pending_doctor_registrations
+        final pendingQuery = await FirebaseFirestore.instance
+            .collection('pending_doctor_registrations')
+            .where('approvedDoctorId', isEqualTo: widget.doctorId)
+            .where('status', isEqualTo: 'approved')
+            .get();
+        
+        if (pendingQuery.docs.isNotEmpty) {
+          await pendingQuery.docs.first.reference.update(updateData);
+        } else {
+          throw Exception('Doctor profile not found for update');
+        }
+      }
+      
+      _showSuccess('Profile updated successfully!');
+      Navigator.pop(context, true);
+      
+    } catch (e) {
+      _showError('Error saving profile: ${e.toString()}');
+    } finally {
+      setState(() => _isSaving = false);
     }
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
-    );
-  }
-
-  void _navigateToEditProfile() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DoctorUpdateScreen(doctorId: widget.doctorId),
-      ),
-    );
-    
-    if (result == true) {
-      _showSuccess('Profile updated successfully!');
-      _loadDoctorProfile(); // Refresh the profile data
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.green),
+      );
     }
-  }
-
-  String _formatTime(String? time) {
-    if (time == null || time.isEmpty) return '';
-    try {
-      final parts = time.split(':');
-      if (parts.length == 2) {
-        final hour = int.parse(parts[0]);
-        final minute = parts[1];
-        final period = hour >= 12 ? 'PM' : 'AM';
-        final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-        return '$displayHour:$minute $period';
-      }
-    } catch (e) {
-      return time;
-    }
-    return time;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
+    if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('My Profile'),
+          title: const Text('Edit Profile'),
           backgroundColor: Theme.of(context).primaryColor,
           foregroundColor: Colors.white,
         ),
@@ -127,213 +227,238 @@ class _DoctorProfileEditScreenState extends State<DoctorProfileEditScreen> {
       );
     }
 
-    if (doctor == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('My Profile'),
-          backgroundColor: Theme.of(context).primaryColor,
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(
-          child: Text('Profile not found', style: TextStyle(fontSize: 18)),
-        ),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: CustomScrollView(
-        slivers: [
-          // Custom App Bar with Doctor Image
-          SliverAppBar(
-            expandedHeight: 300,
-            floating: false,
-            pinned: true,
-            backgroundColor: Theme.of(context).primaryColor,
-            actions: [
-              IconButton(
-                onPressed: _navigateToEditProfile,
-                icon: const Icon(Icons.edit, color: Colors.white),
-                tooltip: 'Edit Profile',
-              ),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Theme.of(context).primaryColor,
-                      Theme.of(context).colorScheme.secondary,
-                    ],
-                  ),
-                ),
-                child: SafeArea(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 60),
-                      // Profile Image
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: ClipOval(
-                          child: doctor!.profileImageUrl != null && 
-                                 doctor!.profileImageUrl!.isNotEmpty
-                              ? Image.network(
-                                  doctor!.profileImageUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      _buildDefaultAvatar(),
-                                )
-                              : _buildDefaultAvatar(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Doctor Name
-                      Text(
-                        'Dr. ${doctor!.name}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      // Specialization
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16, 
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          doctor!.specialization,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Profile Content
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Quick Stats Row
-                  _buildQuickStats(),
-                  const SizedBox(height: 24),
-
-                  // About Section with verification badge
-                  _buildSectionCard(
-                    'About',
-                    Icons.person_outline,
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Verification Status
-                        if (doctor!.isVerified == true) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.green.withOpacity(0.3)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.verified, color: Colors.green, size: 16),
-                                const SizedBox(width: 6),
-                                const Text(
-                                  'Verified Doctor',
-                                  style: TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        _buildAboutContent(),
-                      ],
+      appBar: AppBar(
+        title: const Text('Edit Profile'),
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
+        actions: [
+          TextButton(
+            onPressed: _isSaving ? null : _saveProfile,
+            child: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
+                  )
+                : const Text(
+                    'Save',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Schedule Section
-                  _buildSectionCard(
-                    'Schedule & Availability',
-                    Icons.access_time,
-                    _buildScheduleContent(),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Contact Section
-                  _buildSectionCard(
-                    'Contact Information',
-                    Icons.contact_phone,
-                    _buildContactContent(),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Reviews Section
-                  _buildSectionCard(
-                    'Patient Reviews',
-                    Icons.star_outline,
-                    _buildReviewsContent(),
-                  ),
-                  const SizedBox(height: 100), // Space for floating button
-                ],
-              ),
-            ),
           ),
         ],
       ),
-      floatingActionButton: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(horizontal: 20),
-        child: FloatingActionButton.extended(
-          onPressed: _navigateToEditProfile,
-          backgroundColor: Theme.of(context).colorScheme.secondary,
-          foregroundColor: Colors.white,
-          elevation: 8,
-          label: const Text(
-            'Edit Profile',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Profile Image Section
+              _buildProfileImageSection(),
+              const SizedBox(height: 32),
+              
+              // Personal Information
+              _buildSection(
+                'Personal Information',
+                Icons.person,
+                [
+                  _buildTextField(
+                    controller: _nameController,
+                    label: 'Full Name',
+                    hint: 'Enter your full name',
+                    validator: (value) => value?.isEmpty == true ? 'Name is required' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _emailController,
+                    label: 'Email',
+                    hint: 'Enter your email',
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value?.isEmpty == true) return 'Email is required';
+                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value!)) {
+                        return 'Enter a valid email';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _phoneController,
+                    label: 'Phone Number',
+                    hint: 'Enter your phone number',
+                    keyboardType: TextInputType.phone,
+                    validator: (value) => value?.isEmpty == true ? 'Phone number is required' : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Professional Information
+              _buildSection(
+                'Professional Information',
+                Icons.work,
+                [
+                  _buildTextField(
+                    controller: _specializationController,
+                    label: 'Specialization',
+                    hint: 'e.g., Cardiologist, Pediatrician',
+                    validator: (value) => value?.isEmpty == true ? 'Specialization is required' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _hospitalController,
+                    label: 'Hospital/Clinic',
+                    hint: 'Enter your workplace',
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _qualificationsController,
+                    label: 'Qualifications',
+                    hint: 'e.g., MBBS, MD',
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: _experienceController,
+                          label: 'Experience (Years)',
+                          hint: '5',
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: _consultationFeeController,
+                          label: 'Consultation Fee (\$)',
+                          hint: '50',
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Contact & Location
+              _buildSection(
+                'Location',
+                Icons.location_on,
+                [
+                  _buildTextField(
+                    controller: _addressController,
+                    label: 'Address',
+                    hint: 'Enter your clinic/hospital address',
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // About/Bio
+              _buildSection(
+                'About You',
+                Icons.info_outline,
+                [
+                  _buildTextField(
+                    controller: _bioController,
+                    label: 'Bio/Description',
+                    hint: 'Tell patients about yourself, your approach, etc.',
+                    maxLines: 4,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Availability
+              _buildSection(
+                'Availability',
+                Icons.schedule,
+                [
+                  _buildAvailabilitySection(),
+                ],
+              ),
+              const SizedBox(height: 32),
+              
+              // Save Button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _saveProfile,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: _isSaving
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text(
+                          'Save Changes',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
           ),
-          icon: const Icon(Icons.edit),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildProfileImageSection() {
+    return Center(
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: _pickImage,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Theme.of(context).primaryColor, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: _selectedImage != null
+                    ? Image.file(_selectedImage!, fit: BoxFit.cover)
+                    : _profileImageUrl != null && _profileImageUrl!.isNotEmpty
+                        ? Image.network(
+                            _profileImageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => _buildDefaultAvatar(),
+                          )
+                        : _buildDefaultAvatar(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _pickImage,
+            icon: const Icon(Icons.camera_alt),
+            label: const Text('Change Photo'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -341,437 +466,174 @@ class _DoctorProfileEditScreenState extends State<DoctorProfileEditScreen> {
     return Container(
       width: 120,
       height: 120,
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        shape: BoxShape.circle,
-      ),
+      color: Colors.grey[200],
       child: Icon(
         Icons.person,
         size: 60,
-        color: Theme.of(context).colorScheme.secondary,
+        color: Theme.of(context).primaryColor,
       ),
     );
   }
 
-  Widget _buildQuickStats() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).primaryColor.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildStatItem(
-            'Experience',
-            '${doctor!.experienceYears ?? doctor!.experience ?? 0} years',
-            Icons.work_outline,
-          ),
-          _buildStatItem(
-            'Rating',
-            '${doctor!.rating.toStringAsFixed(1)} ⭐',
-            Icons.star_outline,
-          ),
-          _buildStatItem(
-            'Fee',
-            doctor!.consultationFee != null 
-                ? '\${doctor!.consultationFee.toString()}'
-                : 'Not set',
-            Icons.attach_money,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, IconData icon) {
+  Widget _buildSection(String title, IconData icon, List<Widget> children) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).primaryColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: Theme.of(context).colorScheme.secondary,
-            size: 24,
-          ),
+        Row(
+          children: [
+            Icon(icon, color: Theme.of(context).primaryColor),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.secondary,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-          ),
-        ),
+        const SizedBox(height: 16),
+        ...children,
       ],
     );
   }
 
-  Widget _buildSectionCard(String title, IconData icon, Widget content) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).primaryColor.withOpacity(0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      icon,
-                      color: Theme.of(context).colorScheme.secondary,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.secondary,
-                    ),
-                  ),
-                ],
-              ),
-              // Edit button for each section
-              IconButton(
-                onPressed: _navigateToEditProfile,
-                icon: Icon(
-                  Icons.edit,
-                  size: 18,
-                  color: Colors.grey.shade600,
-                ),
-                tooltip: 'Edit',
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          content,
-        ],
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    String? hint,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
 
-  Widget _buildAboutContent() {
-    final List<Widget> contentWidgets = [];
-    
-    if (doctor!.qualifications != null && doctor!.qualifications!.isNotEmpty) {
-      contentWidgets.add(_buildInfoRow('Qualifications', doctor!.qualifications!));
-      contentWidgets.add(const SizedBox(height: 12));
-    }
-    
-    if (doctor!.hospital != null && doctor!.hospital!.isNotEmpty) {
-      contentWidgets.add(_buildInfoRow('Hospital/Clinic', doctor!.hospital!));
-      contentWidgets.add(const SizedBox(height: 12));
-    }
-    
-    if (doctor!.licenseNumber != null && doctor!.licenseNumber!.isNotEmpty) {
-      contentWidgets.add(_buildInfoRow('License Number', doctor!.licenseNumber!));
-      contentWidgets.add(const SizedBox(height: 12));
-    }
-    
-    if (doctor!.address != null && doctor!.address!.isNotEmpty) {
-      contentWidgets.add(_buildInfoRow('Address', doctor!.address!));
-    }
-    
-    if (contentWidgets.isEmpty) {
-      return _buildEmptyState('No information available', 'Tap edit to add your details');
-    }
-    
+  Widget _buildAvailabilitySection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: contentWidgets,
-    );
-  }
-
-  Widget _buildScheduleContent() {
-    final List<Widget> scheduleWidgets = [];
-    
-    if (doctor!.availableDays != null && doctor!.availableDays!.isNotEmpty) {
-      scheduleWidgets.add(
+      children: [
         const Text(
           'Available Days:',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
-      );
-      scheduleWidgets.add(const SizedBox(height: 8));
-      scheduleWidgets.add(
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: doctor!.availableDays!.map((day) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              day,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-            ),
-          )).toList(),
+          children: _weekDays.map((day) {
+            final isSelected = _availableDays.contains(day);
+            return FilterChip(
+              label: Text(day),
+              selected: isSelected,
+              onSelected: (selected) {
+                setState(() {
+                  if (selected) {
+                    _availableDays.add(day);
+                  } else {
+                    _availableDays.remove(day);
+                  }
+                });
+              },
+              selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
+              checkmarkColor: Theme.of(context).primaryColor,
+            );
+          }).toList(),
         ),
-      );
-      scheduleWidgets.add(const SizedBox(height: 16));
-    }
-    
-    if (doctor!.startTime != null && doctor!.endTime != null) {
-      scheduleWidgets.add(
-        _buildInfoRow(
-          'Working Hours',
-          '${_formatTime(doctor!.startTime)} - ${_formatTime(doctor!.endTime)}',
-        ),
-      );
-    }
-    
-    if (scheduleWidgets.isEmpty) {
-      return _buildEmptyState('No schedule set', 'Set your working hours and available days');
-    }
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: scheduleWidgets,
-    );
-  }
-
-  Widget _buildContactContent() {
-    final List<Widget> contactWidgets = [];
-    
-    if (doctor!.email != null && doctor!.email!.isNotEmpty) {
-      contactWidgets.add(_buildContactRow(Icons.email, 'Email', doctor!.email!));
-    }
-    
-    if (doctor!.phone != null && doctor!.phone!.isNotEmpty) {
-      if (contactWidgets.isNotEmpty) {
-        contactWidgets.add(const SizedBox(height: 12));
-      }
-      contactWidgets.add(_buildContactRow(Icons.phone, 'Phone', doctor!.phone!));
-    }
-    
-    if (contactWidgets.isEmpty) {
-      return _buildEmptyState('No contact information', 'Add your email and phone number');
-    }
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: contactWidgets,
-    );
-  }
-
-  Widget _buildContactRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 20,
-          color: Theme.of(context).colorScheme.secondary,
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReviewsContent() {
-    if (isLoadingReviews) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (reviews.isEmpty) {
-      return _buildEmptyState('No reviews yet', 'Patient reviews will appear here');
-    }
-
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Recent Reviews (${reviews.length})',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            if (reviews.length > 3)
-              TextButton(
-                onPressed: () {
-                  // TODO: Navigate to all reviews screen
-                },
-                child: const Text('View All'),
-              ),
-          ],
+        const SizedBox(height: 20),
+        const Text(
+          'Working Hours:',
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
-        ...reviews.take(3).map((review) => Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Theme.of(context).primaryColor.withOpacity(0.2),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    review['patientName'] ?? 'Anonymous',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                  const Text('Start Time'),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _startTime,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                  ),
-                  Row(
-                    children: List.generate(5, (index) => Icon(
-                      index < (review['rating'] ?? 0)
-                          ? Icons.star
-                          : Icons.star_outline,
-                      size: 16,
-                      color: Colors.amber,
-                    )),
+                    items: _generateTimeOptions(),
+                    onChanged: (value) => setState(() => _startTime = value!),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                review['comment'] ?? '',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade700,
-                ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('End Time'),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _endTime,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    items: _generateTimeOptions(),
+                    onChanged: (value) => setState(() => _endTime = value!),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ))
+            ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _buildEmptyState(String title, String subtitle) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).primaryColor.withOpacity(0.2),
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.info_outline,
-            size: 32,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: Colors.grey.shade500,
-              fontSize: 12,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
+  List<DropdownMenuItem<String>> _generateTimeOptions() {
+    final times = <String>[];
+    for (int hour = 6; hour <= 23; hour++) {
+      for (int minute = 0; minute < 60; minute += 30) {
+        final timeString = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+        times.add(timeString);
+      }
+    }
+    
+    return times.map((time) => DropdownMenuItem(
+      value: time,
+      child: Text(_formatTime(time)),
+    )).toList();
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
+  String _formatTime(String time24) {
+    try {
+      final parts = time24.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = parts[1];
+      final period = hour >= 12 ? 'PM' : 'AM';
+      final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+      return '$displayHour:$minute $period';
+    } catch (e) {
+      return time24;
+    }
   }
 }

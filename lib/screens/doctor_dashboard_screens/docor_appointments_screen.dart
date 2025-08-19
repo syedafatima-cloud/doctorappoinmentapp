@@ -1,6 +1,7 @@
 // screens/doctor_screens/doctor_appointments_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/appointment_model.dart';
 import '../../services/appointment_service.dart';
 
@@ -41,14 +42,28 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> wit
     setState(() => _loading = true);
     
     try {
-      // Load all appointments for this doctor
-      final appointments = await _appointmentService.getAppointmentsForAdmin();
-      
-      // Filter appointments for this doctor and convert to Appointment objects
-      final doctorAppointments = appointments
-          .where((apt) => apt['doctorId'] == widget.doctorId)
-          .map((apt) => Appointment.fromFirestore(apt['id'], apt))
-          .toList();
+      // Load all appointments for this doctor directly from Firestore
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('appointments')
+          .where('doctorId', isEqualTo: widget.doctorId)
+          .get();
+
+      final doctorAppointments = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        
+        // Ensure required fields exist with default values based on your model
+        data['doctorId'] = data['doctorId'] ?? '';
+        data['doctorName'] = data['doctorName'] ?? '';
+        data['userName'] = data['userName'] ?? '';
+        data['userPhone'] = data['userPhone'] ?? '';
+        data['date'] = data['date'] ?? '';
+        data['time'] = data['time'] ?? '';
+        data['appointmentType'] = data['appointmentType'] ?? 'chat';
+        data['status'] = data['status'] ?? 'pending';
+        
+        return Appointment.fromFirestore(doc.id, data);
+      }).toList();
 
       // Sort by date and time (newest first)
       doctorAppointments.sort((a, b) {
@@ -67,6 +82,7 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> wit
       
       _applyFilters();
     } catch (e) {
+      print('Error loading appointments: $e'); // Debug print
       setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -683,39 +699,82 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> wit
     );
   }
 
+  // Fixed appointment status update method
   Future<void> _updateAppointmentStatus(String appointmentId, String newStatus) async {
     try {
-      // TODO: Implement appointment status update in your service
-      // await _appointmentService.updateAppointmentStatus(appointmentId, newStatus);
-      
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Update in Firestore directly
+      await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(appointmentId)
+          .update({
+        'status': newStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update local state
       setState(() {
         final index = _allAppointments.indexWhere((apt) => apt.id == appointmentId);
         if (index != -1) {
-          _allAppointments[index] = Appointment.fromFirestore(
-            _allAppointments[index].id,
-            {
-              ..._allAppointments[index].toFirestore(),
-              'status': newStatus,
-            },
+          // Create a new appointment object with updated status
+          final updatedAppointment = Appointment(
+            id: _allAppointments[index].id,
+            doctorId: _allAppointments[index].doctorId,
+            doctorName: _allAppointments[index].doctorName,
+            userName: _allAppointments[index].userName,
+            userPhone: _allAppointments[index].userPhone,
+            userEmail: _allAppointments[index].userEmail,
+            date: _allAppointments[index].date,
+            time: _allAppointments[index].time,
+            appointmentType: _allAppointments[index].appointmentType,
+            symptoms: _allAppointments[index].symptoms,
+            status: newStatus, // Updated status
+            createdAt: _allAppointments[index].createdAt,
+            updatedAt: DateTime.now(), // Update the timestamp
+            cancellationReason: _allAppointments[index].cancellationReason,
+            cancelledAt: _allAppointments[index].cancelledAt,
+            rescheduledAt: _allAppointments[index].rescheduledAt,
           );
+          
+          _allAppointments[index] = updatedAppointment;
         }
       });
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
       
       _applyFilters();
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Appointment $newStatus successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Appointment $newStatus successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error updating appointment: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      print('Error updating appointment: $e'); // Debug print
+      
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating appointment: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -734,7 +793,7 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> wit
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Appointment Details'),
+          title: const Text('Appointment Details'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
