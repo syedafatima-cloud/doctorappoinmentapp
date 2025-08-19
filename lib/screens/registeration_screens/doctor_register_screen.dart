@@ -278,186 +278,206 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
   }
 
   Future<void> _registerDoctor() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+  if (!_formKey.currentState!.validate()) {
+    return;
+  }
 
-    if (_selectedSpecialization == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a specialization')),
-      );
-      return;
-    }
+  if (_selectedSpecialization == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please select a specialization')),
+    );
+    return;
+  }
 
-    if (_selectedDays.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one available day')),
-      );
-      return;
-    }
+  if (_selectedDays.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please select at least one available day')),
+    );
+    return;
+  }
 
-    setState(() => _isLoading = true);
+  setState(() => _isLoading = true);
 
-    try {
-      String? profileImageUrl;
+  try {
+    String? profileImageUrl;
+    
+    // Upload image if selected
+    if (_selectedImage != null) {
+      print('Starting image upload...');
+      profileImageUrl = await DoctorFirestoreService.uploadImage(_selectedImage!);
+      print('Image upload result: $profileImageUrl');
       
-      // Upload image if selected
-      if (_selectedImage != null) {
-        print('Starting image upload...');
-        profileImageUrl = await DoctorFirestoreService.uploadImage(_selectedImage!);
-        print('Image upload result: $profileImageUrl');
-        
-        if (profileImageUrl == null) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Failed to upload image. Please try again.'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-          setState(() => _isLoading = false);
-          return;
-        }
-      } else {
-        print('No image selected for upload');
-      }
-
-      // Use 24-hour format for backend storage
-      final startTimeFormatted = _formatTimeFor24Hour(_startTime);
-      final endTimeFormatted = _formatTimeFor24Hour(_endTime);
-      
-      print('Start time: $startTimeFormatted, End time: $endTimeFormatted');
-      
-      // Validate required fields before creating data object
-      final fullName = _fullNameController.text.trim();
-      final email = _emailController.text.trim();
-      final phoneNumber = _phoneController.text.trim();
-      final licenseNumber = _licenseController.text.trim();
-      final hospital = _hospitalController.text.trim();
-      final address = _addressController.text.trim();
-      final qualifications = _qualificationsController.text.trim();
-      
-      // Validate numeric fields
-      int? experienceYears;
-      double? consultationFee;
-      
-      try {
-        experienceYears = int.parse(_experienceController.text.trim());
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a valid number for years of experience')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-      
-      try {
-        consultationFee = double.parse(_feeController.text.trim());
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a valid consultation fee')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-      
-      // Check for empty required fields
-      if (fullName.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Full name is required')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-      
-      if (email.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email is required')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-      
-      if (phoneNumber.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Phone number is required')),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-      
-      print('All validations passed, creating doctor data...');
-      
-      final doctorData = <String, dynamic>{
-        'fullName': fullName,
-        'name': fullName,
-        'email': email,
-        'phoneNumber': phoneNumber,
-        'phone': phoneNumber,
-        'specialization': _selectedSpecialization!,
-        'licenseNumber': licenseNumber.isNotEmpty ? licenseNumber : 'Not provided',
-        'hospital': hospital.isNotEmpty ? hospital : 'Not specified',
-        'address': address.isNotEmpty ? address : 'Not provided',
-        'experienceYears': experienceYears,
-        'experience': experienceYears,
-        'qualifications': qualifications.isNotEmpty ? qualifications : 'Not specified',
-        'availableDays': List<String>.from(_selectedDays),
-        'startTime': startTimeFormatted,
-        'endTime': endTimeFormatted,
-        'consultationFee': consultationFee,
-        'profileImageUrl': profileImageUrl ?? '',
-        'profileImage': profileImageUrl ?? '',
-        'rating': 0.0,
-        'isVerified': false,
-        'isActive': false,
-        'registrationDate': DateTime.now().toIso8601String(),
-        'createdAt': DateTime.now().toIso8601String(),
-        'updatedAt': DateTime.now().toIso8601String(),
-      };
-
-      print('Doctor data to submit:');
-      doctorData.forEach((key, value) {
-        print('  $key: $value (${value.runtimeType})');
-      });
-
-      // Submit for admin approval
-      print('Calling submitDoctorRegistrationRequest...');
-      final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorData);
-      print('Request ID received: $requestId');
-
-      if (requestId != null && requestId.isNotEmpty) {
-        if (mounted) {
-          _showRegistrationSubmittedDialog();
-        }
-      } else {
+      if (profileImageUrl == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Registration failed: Could not save to database.'),
-              backgroundColor: Colors.red,
+              content: Text('Failed to upload image. Please try again.'),
+              backgroundColor: Colors.orange,
             ),
           );
         }
+        setState(() => _isLoading = false);
+        return;
       }
-    } catch (e, stackTrace) {
-      print('Registration error: $e');
-      print('Stack trace: $stackTrace');
+    } else {
+      print('No image selected for upload');
+    }
+
+    // Use 24-hour format for backend storage
+    final startTimeFormatted = _formatTimeFor24Hour(_startTime);
+    final endTimeFormatted = _formatTimeFor24Hour(_endTime);
+    
+    print('Start time: $startTimeFormatted, End time: $endTimeFormatted');
+    
+    // Validate required fields before creating data object
+    final fullName = _fullNameController.text.trim();
+    final email = _emailController.text.trim();
+    final phoneNumber = _phoneController.text.trim();
+    final licenseNumber = _licenseController.text.trim();
+    final hospital = _hospitalController.text.trim();
+    final address = _addressController.text.trim();
+    final qualifications = _qualificationsController.text.trim();
+    
+    // Validate numeric fields
+    int? experienceYears;
+    double? consultationFee;
+    
+    try {
+      experienceYears = int.parse(_experienceController.text.trim());
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid number for years of experience')),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+    
+    try {
+      consultationFee = double.parse(_feeController.text.trim());
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid consultation fee')),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+    
+    // Get password from signup screen data
+    String? password = widget.userData?['password'];
+    
+    if (password == null || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password not found. Please go back to signup screen.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+    
+    // Check for empty required fields
+    if (fullName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Full name is required')),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+    
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email is required')),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+    
+    if (phoneNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Phone number is required')),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
+    
+    print('All validations passed, creating doctor data...');
+    
+    final doctorData = <String, dynamic>{
+      // IMPORTANT: Include the password from signup
+      'password': password,
+      
+      'fullName': fullName,
+      'name': fullName,
+      'email': email,
+      'phoneNumber': phoneNumber,
+      'phone': phoneNumber,
+      'specialization': _selectedSpecialization!,
+      'licenseNumber': licenseNumber.isNotEmpty ? licenseNumber : 'Not provided',
+      'hospital': hospital.isNotEmpty ? hospital : 'Not specified',
+      'address': address.isNotEmpty ? address : 'Not provided',
+      'experienceYears': experienceYears,
+      'experience': experienceYears,
+      'qualifications': qualifications.isNotEmpty ? qualifications : 'Not specified',
+      'availableDays': List<String>.from(_selectedDays),
+      'startTime': startTimeFormatted,
+      'endTime': endTimeFormatted,
+      'consultationFee': consultationFee,
+      'profileImageUrl': profileImageUrl ?? '',
+      'profileImage': profileImageUrl ?? '',
+      'rating': 0.0,
+      'isVerified': false,
+      'isActive': false,
+      'registrationDate': DateTime.now().toIso8601String(),
+      'createdAt': DateTime.now().toIso8601String(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
+
+    print('Doctor data to submit:');
+    doctorData.forEach((key, value) {
+      if (key == 'password') {
+        print('  $key: [HIDDEN] (${value.runtimeType})');
+      } else {
+        print('  $key: $value (${value.runtimeType})');
+      }
+    });
+
+    // Submit for admin approval
+    print('Calling submitDoctorRegistrationRequest...');
+    final requestId = await _doctorService.submitDoctorRegistrationRequest(doctorData);
+    print('Request ID received: $requestId');
+
+    if (requestId != null && requestId.isNotEmpty) {
+      if (mounted) {
+        _showRegistrationSubmittedDialog();
+      }
+    } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Registration failed: ${e.toString()}'),
+          const SnackBar(
+            content: Text('Registration failed: Could not save to database.'),
             backgroundColor: Colors.red,
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+    }
+  } catch (e, stackTrace) {
+    print('Registration error: $e');
+    print('Stack trace: $stackTrace');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Registration failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
   }
-
+}
   void _showRegistrationSubmittedDialog() {
     showDialog(
       context: context,
@@ -935,14 +955,7 @@ class _DoctorRegistrationScreenState extends State<DoctorRegistrationScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  '₨',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.secondary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
+                
               ],
             ),
           ),

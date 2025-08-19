@@ -70,7 +70,6 @@ void main() async {
     final appointmentService = AppointmentService();
     final notificationService = NotificationService();
     
-    await appointmentService.initializeNotifications();
     await notificationService.initialize();
     print('✅ Services initialized successfully');
   } catch (e) {
@@ -175,6 +174,7 @@ class MyApp extends StatelessWidget {
             nextScreen: LoginPage(),
           ),
           routes: {
+            '/login': (context) => const LoginPage(),
             '/admin': (context) => const AdminDashboard(adminId: 'your_admin_id'),
             '/home': (context) => const HomeScreen(),
             '/signup': (context) => const Signup(),

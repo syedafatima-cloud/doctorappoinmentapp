@@ -31,26 +31,29 @@ class DoctorRecommendation {
   });
 
   factory DoctorRecommendation.fromDoctorData(
-    String doctorId,
-    Map<String, dynamic> doctorData,
-    double matchScore,
-    List<String> matchingConditions,
-    bool isAvailable,
-  ) {
-    return DoctorRecommendation(
-      doctorId: doctorId,
-      doctorName: doctorData['fullName'] ?? '',
-      specialization: doctorData['specialization'] ?? '',
-      matchScore: matchScore,
-      matchingConditions: matchingConditions,
-      profileImageUrl: doctorData['profileImageUrl'] ?? '',
-      rating: (doctorData['rating'] ?? 0.0).toDouble(),
-      consultationFee: (doctorData['consultationFee'] ?? 0).toInt(),
-      isAvailable: isAvailable,
-      hospital: doctorData['hospital'] ?? '',
-      availableDays: List<String>.from(doctorData['availableDays'] ?? []),
-      startTime: doctorData['startTime'] ?? '',
-      endTime: doctorData['endTime'] ?? '',
-    );
-  }
+  String doctorId,
+  Map<String, dynamic> doctorData,
+  double matchScore,
+  List<String> matchingConditions,
+  bool isAvailable,
+) {
+  return DoctorRecommendation(
+    doctorId: doctorId,
+    doctorName: doctorData['fullName'] ?? 
+                doctorData['name'] ?? 
+                doctorData['doctorName'] ?? 
+                'Unknown Doctor',
+    specialization: doctorData['specialization'] ?? '',
+    matchScore: matchScore,
+    matchingConditions: matchingConditions,
+    profileImageUrl: doctorData['profileImageUrl'] ?? '',
+    rating: (doctorData['rating'] ?? 0.0).toDouble(),
+    consultationFee: (doctorData['consultationFee'] ?? 0).toInt(),
+    isAvailable: isAvailable,
+    hospital: doctorData['hospital'] ?? '',
+    availableDays: List<String>.from(doctorData['availableDays'] ?? []),
+    startTime: doctorData['startTime'] ?? '',
+    endTime: doctorData['endTime'] ?? '',
+  );
+}
 }

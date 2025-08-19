@@ -1,5 +1,6 @@
 import 'package:doctorappoinmentapp/screens/appointment_booking_screen.dart';
 import 'package:doctorappoinmentapp/screens/disease_selection_screen.dart';
+import 'package:doctorappoinmentapp/screens/doctor_profile_screen.dart';
 import 'package:doctorappoinmentapp/screens/registeration_screens/login_screen.dart';
 import 'package:doctorappoinmentapp/screens/splash_screen.dart';
 import 'package:doctorappoinmentapp/screens/talk_to_doc_screen.dart';
@@ -540,23 +541,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildDoctorCard(Doctor doctor) {
-    final name = doctor.name;
-    final specialty = doctor.specialization;
-    final rating = doctor.rating;
-    final experience = doctor.experienceYears ?? doctor.experience ?? 0;
-    final image = doctor.profileImageUrl ?? doctor.profileImage ?? '';
-    final fee = doctor.consultationFee != null ? doctor.consultationFee.toString() : '';
+  final name = doctor.name;
+  final specialty = doctor.specialization;
+  final rating = doctor.rating;
+  final experience = doctor.experienceYears ?? doctor.experience ?? 0;
+  final image = doctor.profileImageUrl ?? doctor.profileImage ?? '';
+  final fee = doctor.consultationFee != null ? doctor.consultationFee.toString() : '';
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4), // Reduced margin
+  return GestureDetector(
+    onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DoctorProfileScreen(doctorId: doctor.id),
+        ),
+      );
+    },
+    child: Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(20), // Reduced from 24
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF7E57C2).withOpacity(0.1),
-            blurRadius: 16, // Reduced from 20
-            offset: const Offset(0, 6), // Reduced from 8
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -564,7 +574,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         children: [
           // Doctor Header
           Container(
-            height: 100, // Reduced from 120
+            height: 100,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -574,22 +584,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)), // Reduced from 24
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Stack(
               children: [
                 Center(
                   child: Container(
-                    width: 60, // Reduced from 70
-                    height: 60, // Reduced from 70
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2), // Reduced from 3
+                      border: Border.all(color: Colors.white, width: 2),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFF7E57C2).withOpacity(0.2),
-                          blurRadius: 10, // Reduced from 12
-                          offset: const Offset(0, 3), // Reduced from 4
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
                         ),
                       ],
                     ),
@@ -605,19 +615,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
                 Positioned(
-                  top: 12, // Reduced from 16
-                  right: 12, // Reduced from 16
+                  top: 12,
+                  right: 12,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Reduced
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.green,
-                      borderRadius: BorderRadius.circular(12), // Reduced from 16
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Text(
                       'Available',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 10, // Reduced from 11
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -630,52 +640,43 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           // Doctor Info
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(12), // Reduced from 16
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     name,
                     style: TextStyle(
-                      fontSize: 16, // Reduced from 18
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.onSurface,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 3), // Reduced from 4
+                  const SizedBox(height: 3),
                   Text(
                     specialty,
                     style: const TextStyle(
-                      fontSize: 12, // Reduced from 14
+                      fontSize: 12,
                       color: Color(0xFF7E57C2),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 8), // Reduced from 12
+                  const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.star, color: Colors.amber, size: 14), // Reduced from 16
-                      const SizedBox(width: 3), // Reduced from 4
+                      const Icon(Icons.star, color: Colors.amber, size: 14),
+                      const SizedBox(width: 3),
                       Text(
                         rating.toStringAsFixed(1),
                         style: TextStyle(
-                          fontSize: 12, // Reduced from 14
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
-                      const SizedBox(width: 12), // Reduced from 16
-                      Icon(Icons.work_outline, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), size: 14), // Reduced from 16
-                      const SizedBox(width: 3), // Reduced from 4
-                      Text(
-                        '${experience}y exp',
-                        style: TextStyle(
-                          fontSize: 12, // Reduced from 14
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                        ),
-                      ),
+                      const SizedBox(width: 12),
                     ],
                   ),
                   // Experience and Fee Row
@@ -690,7 +691,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ],
                         if (fee.isNotEmpty) ...[
                           const SizedBox(width: 12),
-                          const Icon(Icons.attach_money, size: 13, color: Color(0xFF7E57C2)),
+                          const Text(
+                            'PKR',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF7E57C2),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                           const SizedBox(width: 2),
                           Text(fee, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface)),
                         ],
@@ -698,43 +706,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ],
                   const Spacer(),
-SizedBox(
-  width: double.infinity,
-  child: ElevatedButton(
-    onPressed: () {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => AppointmentBookingScreen(),
-        ),
-      );
-    },
-    style: ElevatedButton.styleFrom(
-      backgroundColor: const Color(0xFFD1C4E9),
-      foregroundColor: const Color(0xFF424242),
-      padding: const EdgeInsets.symmetric(vertical: 10), // Reduced from 12
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14), // Reduced from 16
-      ),
-      elevation: 0,
-    ),
-    child: const Text(
-      'Book Appointment',
-      style: TextStyle(
-        fontSize: 12, // Reduced from 14
-        fontWeight: FontWeight.bold,
-      ),
-    ),
-  ),
-),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AppointmentBookingScreen(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD1C4E9),
+                        foregroundColor: const Color(0xFF424242),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Book Appointment',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildDefaultAvatar() {
     return Container(

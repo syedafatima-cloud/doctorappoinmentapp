@@ -1,6 +1,9 @@
 // screens/admin_doctor_requests_screen.dart
 import 'package:doctorappoinmentapp/services/doctor_register_service.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math';
 
 class AdminDoctorRequestsScreen extends StatefulWidget {
   final String adminId; // Pass admin ID when navigating to this screen
@@ -115,23 +118,102 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
     }
   }
 
+  // Fixed approval method that creates Firebase account with doctor's original password
   Future<void> _approveRequest(String requestId, Map<String, dynamic> requestData) async {
     try {
-      final success = await _doctorService.approveDoctorRegistration(requestId, widget.adminId);
+      // Get the full request document with password hash
+      final fullRequestDoc = await FirebaseFirestore.instance
+          .collection('pending_doctor_registrations')
+          .doc(requestId)
+          .get();
       
-      if (success) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Doctor ${requestData['fullName']} approved successfully!'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-          _loadData(); // Refresh data
+      if (!fullRequestDoc.exists) {
+        throw Exception('Registration request not found');
+      }
+      
+      final fullRequestData = fullRequestDoc.data() as Map<String, dynamic>;
+      
+      // Check if we have the original password (for backward compatibility)
+      String? originalPassword = fullRequestData['originalPassword']; // If stored temporarily
+      final email = requestData['email'];
+      
+      if (email == null) {
+        throw Exception('Doctor email not found in request data');
+      }
+      
+      print('🔐 Creating Firebase Auth account for doctor: $email');
+      
+      // If we don't have the original password, we need to use a different approach
+      if (originalPassword == null || originalPassword.isEmpty) {
+        print('⚠️ No original password found, using password reset flow');
+        await _approveWithPasswordReset(requestId, requestData, email);
+        return;
+      }
+      
+      try {
+        // Create Firebase Auth account with the doctor's original password
+        UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: originalPassword,
+        );
+        
+        print('✅ Firebase Auth account created with UID: ${userCredential.user!.uid}');
+        
+        // Update the user's display name
+        await userCredential.user!.updateDisplayName('Dr. ${requestData['fullName']}');
+        
+        // Now approve the doctor registration in the database
+        final success = await _doctorService.approveDoctorRegistration(requestId, widget.adminId);
+        
+        if (success) {
+          // Remove the original password from storage for security
+          await FirebaseFirestore.instance
+              .collection('pending_doctor_registrations')
+              .doc(requestId)
+              .update({'originalPassword': FieldValue.delete()});
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Doctor ${requestData['fullName']} approved! They can now login with their credentials.'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+            _loadData(); // Refresh data
+          }
+        } else {
+          // If approval failed, delete the created Firebase account
+          await userCredential.user!.delete();
+          throw Exception('Failed to approve doctor registration');
         }
-      } else {
-        throw Exception('Failed to approve doctor registration');
+        
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'email-already-in-use') {
+          // Account already exists, just approve the registration
+          final success = await _doctorService.approveDoctorRegistration(requestId, widget.adminId);
+          
+          if (success) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Doctor ${requestData['fullName']} approved! Account already exists.'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+              _loadData(); // Refresh data
+            }
+          } else {
+            throw Exception('Failed to approve doctor registration');
+          }
+        } else if (e.code == 'weak-password') {
+          throw Exception('Doctor\'s password is too weak for Firebase Auth');
+        } else if (e.code == 'invalid-email') {
+          throw Exception('Invalid email format');
+        } else {
+          throw Exception('Firebase Auth error: ${e.message}');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -139,10 +221,261 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
           SnackBar(
             content: Text('Error approving doctor: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
+    }
+  }
+
+  // Helper method for password reset flow when original password is not available
+  Future<void> _approveWithPasswordReset(String requestId, Map<String, dynamic> requestData, String email) async {
+    try {
+      // Generate a secure temporary password
+      final tempPassword = _generateSecurePassword();
+      
+      // Create Firebase Auth account with temporary password
+      UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: tempPassword,
+      );
+      
+      print('✅ Firebase Auth account created with temp password. UID: ${userCredential.user!.uid}');
+      
+      // Update the user's display name
+      await userCredential.user!.updateDisplayName('Dr. ${requestData['fullName']}');
+      
+      // Approve the doctor registration
+      final success = await _doctorService.approveDoctorRegistration(requestId, widget.adminId);
+      
+      if (success) {
+        // Send password reset email so doctor can set their own password
+        await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Doctor ${requestData['fullName']} approved! Password reset email sent - they need to reset their password to login.'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      } else {
+        // If approval failed, delete the created Firebase account
+        await userCredential.user!.delete();
+        throw Exception('Failed to approve doctor registration');
+      }
+    } catch (e) {
+      print('Error in password reset flow: $e');
+      rethrow;
+    }
+  }
+
+  String _generateActivationToken() {
+    return DateTime.now().millisecondsSinceEpoch.toString() + 
+           (Random().nextInt(999999)).toString();
+  }
+
+  Future<void> _storeActivationToken(String token, Map<String, dynamic> doctorData) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('activation_tokens')
+          .doc(token)
+          .set({
+            'email': doctorData['email'],
+            'fullName': doctorData['fullName'],
+            'requestId': doctorData['requestId'],
+            'createdAt': FieldValue.serverTimestamp(),
+            'expiresAt': DateTime.now().add(const Duration(days: 7)).toIso8601String(),
+            'used': false,
+          });
+    } catch (e) {
+      print('Error storing activation token: $e');
+      throw Exception('Failed to generate activation token');
+    }
+  }
+
+  Future<void> _sendDoctorActivationEmail(Map<String, dynamic> doctorData, String token) async {
+    try {
+      final activationLink = 'https://yourapp.com/activate-doctor?token=$token';
+      
+      // In a real app, you would integrate with an email service like SendGrid, Mailgun, etc.
+      // For now, we'll just log the email content
+      print('📧 Sending activation email to: ${doctorData['email']}');
+      print('📧 Activation link: $activationLink');
+      
+      // Email content
+      final emailContent = '''
+      Dear Dr. ${doctorData['fullName']},
+      
+      Congratulations! Your doctor registration has been approved.
+      
+      To complete your account setup and start using the platform, please click the link below:
+      
+      $activationLink
+      
+      This link will expire in 7 days. Once activated, you can login using your registered email and password.
+      
+      If you have any questions, please contact our support team.
+      
+      Welcome to our medical platform!
+      
+      Best regards,
+      Medical App Team
+      ''';
+      
+      // TODO: Replace with actual email service integration
+      // await emailService.send(
+      //   to: doctorData['email'],
+      //   subject: 'Activate Your Doctor Account - Registration Approved',
+      //   body: emailContent,
+      // );
+      
+      print('📧 Email content:\n$emailContent');
+      
+    } catch (e) {
+      print('Error sending activation email: $e');
+      throw Exception('Failed to send activation email');
+    }
+  }
+
+  // Option 2: Create Firebase account with system-generated password and send reset email
+  Future<void> _approveRequestWithPasswordReset(String requestId, Map<String, dynamic> requestData) async {
+    try {
+      final email = requestData['email'];
+      
+      if (email == null) {
+        throw Exception('Doctor email not found in request data');
+      }
+      
+      print('🔐 Creating Firebase Auth account for doctor: $email');
+      
+      // Generate a secure temporary password
+      final tempPassword = _generateSecurePassword();
+      
+      try {
+        // Create Firebase Auth account with temporary password
+        UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: tempPassword,
+        );
+        
+        print('✅ Firebase Auth account created with UID: ${userCredential.user!.uid}');
+        
+        // Update the user's display name
+        await userCredential.user!.updateDisplayName('Dr. ${requestData['fullName']}');
+        
+        // Approve the doctor registration
+        final success = await _doctorService.approveDoctorRegistration(requestId, widget.adminId);
+        
+        if (success) {
+          // Send password reset email so doctor can set their own password
+          await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+          
+          // Send welcome email with instructions
+          await _sendWelcomeEmailWithPasswordReset(requestData);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Doctor ${requestData['fullName']} approved! Welcome email sent with password setup instructions.'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+            _loadData(); // Refresh data
+          }
+        } else {
+          // If approval failed, delete the created Firebase account
+          await userCredential.user!.delete();
+          throw Exception('Failed to approve doctor registration');
+        }
+        
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'email-already-in-use') {
+          // Account already exists, just approve and send reset email
+          final success = await _doctorService.approveDoctorRegistration(requestId, widget.adminId);
+          
+          if (success) {
+            await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+            await _sendWelcomeEmailWithPasswordReset(requestData);
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Doctor ${requestData['fullName']} approved! Password reset email sent.'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+              _loadData(); // Refresh data
+            }
+          } else {
+            throw Exception('Failed to approve doctor registration');
+          }
+        } else {
+          throw Exception('Firebase Auth error: ${e.message}');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error approving doctor: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  String _generateSecurePassword() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*';
+    final random = Random.secure();
+    return List.generate(12, (index) => chars[random.nextInt(chars.length)]).join();
+  }
+
+  Future<void> _sendWelcomeEmailWithPasswordReset(Map<String, dynamic> doctorData) async {
+    try {
+      final emailContent = '''
+      Dear Dr. ${doctorData['fullName']},
+      
+      Congratulations! Your doctor registration has been approved and your account has been created.
+      
+      To access your account:
+      1. Download our app from the App Store or Google Play
+      2. Click "Forgot Password" on the login screen
+      3. Enter your email: ${doctorData['email']}
+      4. Check your email for password reset instructions
+      5. Set your new password and login
+      
+      Your account details:
+      - Email: ${doctorData['email']}
+      - Specialization: ${doctorData['specialization']}
+      - Hospital: ${doctorData['hospital']}
+      
+      Welcome to our medical platform! We're excited to have you on board.
+      
+      If you need any assistance, please contact our support team.
+      
+      Best regards,
+      Medical App Team
+      ''';
+      
+      print('📧 Sending welcome email to: ${doctorData['email']}');
+      print('📧 Email content:\n$emailContent');
+      
+      // TODO: Replace with actual email service integration
+      // await emailService.send(
+      //   to: doctorData['email'],
+      //   subject: 'Welcome! Your Doctor Account is Ready',
+      //   body: emailContent,
+      // );
+      
+    } catch (e) {
+      print('Error sending welcome email: $e');
     }
   }
 
@@ -320,7 +653,7 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                         _buildDetailRow('Hospital/Clinic', requestData['hospital'] ?? 'N/A'),
                         _buildDetailRow('Experience', '${requestData['experienceYears'] ?? 0} years'),
                         _buildDetailRow('Consultation Fee', '\$${requestData['consultationFee'] ?? 0}'),
-                        _buildDetailRow('Available Days', (requestData['availableDays'] as List<dynamic>?)?.cast<String>()?.join(', ') ?? 'N/A'),
+                        _buildDetailRow('Available Days', (requestData['availableDays'] as List<dynamic>?)?.cast<String>().join(', ') ?? 'N/A'),
                         _buildDetailRow('Working Hours', '${requestData['startTime'] ?? 'N/A'} - ${requestData['endTime'] ?? 'N/A'}'),
                         _buildDetailRow('Address', requestData['address'] ?? 'N/A'),
                         _buildDetailRow('Qualifications', requestData['qualifications'] ?? 'N/A', isMultiLine: true),
@@ -331,6 +664,8 @@ class _AdminDoctorRequestsScreenState extends State<AdminDoctorRequestsScreen> w
                           const Divider(height: 20),
                           _buildDetailRow('Approved Date', _formatDate(requestData['reviewDate'])),
                           _buildDetailRow('Approved By', requestData['reviewedBy'] ?? 'N/A'),
+                          if (requestData['firebaseUid'] != null)
+                            _buildDetailRow('Firebase UID', requestData['firebaseUid']),
                         ],
                         if (requestData['status'] == 'rejected') ...[
                           const Divider(height: 20),

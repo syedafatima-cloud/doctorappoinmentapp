@@ -3,7 +3,7 @@ import 'package:doctorappoinmentapp/screens/admin_screens/admin_appointment_scre
 import 'package:doctorappoinmentapp/screens/admin_screens/admin_notification_screen.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/admin_statistics.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/admin_users_screen.dart';
-import 'package:doctorappoinmentapp/screens/admin_screens/doctor_register_management.dart';
+import 'package:doctorappoinmentapp/screens/admin_screens/doctor_requests_screen.dart';
 import 'package:doctorappoinmentapp/screens/admin_screens/doctor_update_screen.dart';
 import 'package:doctorappoinmentapp/services/admin_services.dart';
 import 'package:flutter/material.dart';
@@ -56,6 +56,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
     
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.of(context).pushReplacementNamed('/login');
+          },
+        ),
         title: const Text('Admin Dashboard'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,

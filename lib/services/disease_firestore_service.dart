@@ -7,150 +7,190 @@ class DiseaseFirestoreService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const String _collection = 'health_concerns';
 
+  // Define a static mapping of icon names to IconData
+  static const Map<String, IconData> _iconMapping = {
+    'favorite': Icons.favorite,
+    'restaurant': Icons.restaurant,
+    'air': Icons.air,
+    'psychology': Icons.psychology,
+    'accessibility_new': Icons.accessibility_new,
+    'face': Icons.face,
+    'sentiment_very_satisfied': Icons.sentiment_very_satisfied,
+    'visibility': Icons.visibility,
+    'hearing': Icons.hearing,
+    'pregnant_woman': Icons.pregnant_woman,
+    'child_care': Icons.child_care,
+    'water_drop': Icons.water_drop,
+    'science': Icons.science,
+    'medical_services': Icons.medical_services,
+    'local_hospital': Icons.local_hospital,
+    'health_and_safety': Icons.health_and_safety,
+  };
+
+  // Color mapping for consistent colors
+  static const Map<String, Color> _colorMapping = {
+    'red': Colors.red,
+    'orange': Colors.orange,
+    'blue': Colors.blue,
+    'purple': Colors.purple,
+    'green': Colors.green,
+    'pink': Colors.pink,
+    'teal': Colors.teal,
+    'indigo': Colors.indigo,
+    'amber': Colors.amber,
+    'pinkAccent': Colors.pinkAccent,
+    'lightBlue': Colors.lightBlue,
+    'cyan': Colors.cyan,
+    'deepOrange': Colors.deepOrange,
+    'redDark': Color(0xFFC62828), // Colors.red.shade800
+    'redMedium': Color(0xFFE53935), // Colors.red.shade600
+    'greyMedium': Color(0xFF757575), // Colors.grey.shade600
+  };
+
   // Initialize disease data in Firestore (call this once to populate)
   static Future<void> initializeDiseaseData() async {
     try {
       print('Starting to initialize disease data...');
       
-      final List<Disease> diseases = [
-        Disease(
-          name: 'Heart Problems',
-          description: 'Chest pain, irregular heartbeat, blood pressure issues, heart palpitations',
-          specializations: ['Cardiology', 'Internal Medicine'],
-          icon: Icons.favorite,
-          color: Colors.red,
-        ),
-        Disease(
-          name: 'Stomach Issues',
-          description: 'Stomach pain, nausea, digestive problems, acid reflux, bloating',
-          specializations: ['Gastroenterology', 'Internal Medicine'],
-          icon: Icons.restaurant,
-          color: Colors.orange,
-        ),
-        Disease(
-          name: 'Breathing Problems',
-          description: 'Difficulty breathing, cough, chest tightness, asthma, wheezing',
-          specializations: ['Pulmonology', 'Internal Medicine'],
-          icon: Icons.air,
-          color: Colors.blue,
-        ),
-        Disease(
-          name: 'Brain & Nerves',
-          description: 'Headaches, memory issues, seizures, nerve pain, migraines',
-          specializations: ['Neurology'],
-          icon: Icons.psychology,
-          color: Colors.purple,
-        ),
-        Disease(
-          name: 'Bones & Joints',
-          description: 'Back pain, joint pain, fractures, muscle problems, arthritis',
-          specializations: ['Orthopedics', 'Rheumatology'],
-          icon: Icons.accessibility_new,
-          color: Colors.green,
-        ),
-        Disease(
-          name: 'Skin Problems',
-          description: 'Rashes, acne, infections, skin irritation, eczema, allergies',
-          specializations: ['Dermatology'],
-          icon: Icons.face,
-          color: Colors.pink,
-        ),
-        Disease(
-          name: 'Mental Health',
-          description: 'Depression, anxiety, stress, mood disorders, panic attacks',
-          specializations: ['Psychiatry', 'Psychology'],
-          icon: Icons.sentiment_very_satisfied,
-          color: Colors.teal,
-        ),
-        Disease(
-          name: 'Eye Problems',
-          description: 'Vision issues, eye pain, infections, blurred vision, dry eyes',
-          specializations: ['Ophthalmology'],
-          icon: Icons.visibility,
-          color: Colors.indigo,
-        ),
-        Disease(
-          name: 'Ear, Nose & Throat',
-          description: 'Sore throat, hearing problems, sinus issues, ear infections',
-          specializations: ['ENT'],
-          icon: Icons.hearing,
-          color: Colors.amber,
-        ),
-        Disease(
-          name: 'Women\'s Health',
-          description: 'Gynecological issues, pregnancy, reproductive health, menstrual problems',
-          specializations: ['Gynecology', 'Obstetrics'],
-          icon: Icons.pregnant_woman,
-          color: Colors.pinkAccent,
-        ),
-        Disease(
-          name: 'Children\'s Health',
-          description: 'Pediatric conditions, growth issues, vaccinations, child development',
-          specializations: ['Pediatrics'],
-          icon: Icons.child_care,
-          color: Colors.lightBlue,
-        ),
-        Disease(
-          name: 'Kidney & Urinary',
-          description: 'Kidney problems, urinary issues, infections, bladder problems',
-          specializations: ['Urology', 'Nephrology'],
-          icon: Icons.water_drop,
-          color: Colors.cyan,
-        ),
-        Disease(
-          name: 'Hormone Issues',
-          description: 'Diabetes, thyroid problems, weight issues, hormonal imbalances',
-          specializations: ['Endocrinology'],
-          icon: Icons.science,
-          color: Colors.deepOrange,
-        ),
-        Disease(
-          name: 'Cancer & Tumors',
-          description: 'Cancer screening, tumors, oncology care, chemotherapy',
-          specializations: ['Oncology'],
-          icon: Icons.medical_services,
-          color: Colors.red.shade800,
-        ),
-        Disease(
-          name: 'Emergency Issues',
-          description: 'Urgent medical problems, accidents, severe pain, trauma',
-          specializations: ['Emergency Medicine'],
-          icon: Icons.local_hospital,
-          color: Colors.red.shade600,
-        ),
-        Disease(
-          name: 'General Health',
-          description: 'Fever, fatigue, routine checkups, general concerns, preventive care',
-          specializations: ['General Practice', 'Family Medicine'],
-          icon: Icons.health_and_safety,
-          color: Colors.grey.shade600,
-        ),
+      final List<Map<String, dynamic>> diseases = [
+        {
+          'name': 'Heart Problems',
+          'description': 'Chest pain, irregular heartbeat, blood pressure issues, heart palpitations',
+          'specializations': ['Cardiology', 'Internal Medicine'],
+          'iconName': 'favorite',
+          'colorName': 'red',
+        },
+        {
+          'name': 'Stomach Issues',
+          'description': 'Stomach pain, nausea, digestive problems, acid reflux, bloating',
+          'specializations': ['Gastroenterology', 'Internal Medicine'],
+          'iconName': 'restaurant',
+          'colorName': 'orange',
+        },
+        {
+          'name': 'Breathing Problems',
+          'description': 'Difficulty breathing, cough, chest tightness, asthma, wheezing',
+          'specializations': ['Pulmonology', 'Internal Medicine'],
+          'iconName': 'air',
+          'colorName': 'blue',
+        },
+        {
+          'name': 'Brain & Nerves',
+          'description': 'Headaches, memory issues, seizures, nerve pain, migraines',
+          'specializations': ['Neurology'],
+          'iconName': 'psychology',
+          'colorName': 'purple',
+        },
+        {
+          'name': 'Bones & Joints',
+          'description': 'Back pain, joint pain, fractures, muscle problems, arthritis',
+          'specializations': ['Orthopedics', 'Rheumatology'],
+          'iconName': 'accessibility_new',
+          'colorName': 'green',
+        },
+        {
+          'name': 'Skin Problems',
+          'description': 'Rashes, acne, infections, skin irritation, eczema, allergies',
+          'specializations': ['Dermatology'],
+          'iconName': 'face',
+          'colorName': 'pink',
+        },
+        {
+          'name': 'Mental Health',
+          'description': 'Depression, anxiety, stress, mood disorders, panic attacks',
+          'specializations': ['Psychiatry', 'Psychology'],
+          'iconName': 'sentiment_very_satisfied',
+          'colorName': 'teal',
+        },
+        {
+          'name': 'Eye Problems',
+          'description': 'Vision issues, eye pain, infections, blurred vision, dry eyes',
+          'specializations': ['Ophthalmology'],
+          'iconName': 'visibility',
+          'colorName': 'indigo',
+        },
+        {
+          'name': 'Ear, Nose & Throat',
+          'description': 'Sore throat, hearing problems, sinus issues, ear infections',
+          'specializations': ['ENT'],
+          'iconName': 'hearing',
+          'colorName': 'amber',
+        },
+        {
+          'name': 'Women\'s Health',
+          'description': 'Gynecological issues, pregnancy, reproductive health, menstrual problems',
+          'specializations': ['Gynecology', 'Obstetrics'],
+          'iconName': 'pregnant_woman',
+          'colorName': 'pinkAccent',
+        },
+        {
+          'name': 'Children\'s Health',
+          'description': 'Pediatric conditions, growth issues, vaccinations, child development',
+          'specializations': ['Pediatrics'],
+          'iconName': 'child_care',
+          'colorName': 'lightBlue',
+        },
+        {
+          'name': 'Kidney & Urinary',
+          'description': 'Kidney problems, urinary issues, infections, bladder problems',
+          'specializations': ['Urology', 'Nephrology'],
+          'iconName': 'water_drop',
+          'colorName': 'cyan',
+        },
+        {
+          'name': 'Hormone Issues',
+          'description': 'Diabetes, thyroid problems, weight issues, hormonal imbalances',
+          'specializations': ['Endocrinology'],
+          'iconName': 'science',
+          'colorName': 'deepOrange',
+        },
+        {
+          'name': 'Cancer & Tumors',
+          'description': 'Cancer screening, tumors, oncology care, chemotherapy',
+          'specializations': ['Oncology'],
+          'iconName': 'medical_services',
+          'colorName': 'redDark',
+        },
+        {
+          'name': 'Emergency Issues',
+          'description': 'Urgent medical problems, accidents, severe pain, trauma',
+          'specializations': ['Emergency Medicine'],
+          'iconName': 'local_hospital',
+          'colorName': 'redMedium',
+        },
+        {
+          'name': 'General Health',
+          'description': 'Fever, fatigue, routine checkups, general concerns, preventive care',
+          'specializations': ['General Practice', 'Family Medicine'],
+          'iconName': 'health_and_safety',
+          'colorName': 'greyMedium',
+        },
       ];
 
       // Add each disease to Firestore
       final batch = _firestore.batch();
       
       for (int i = 0; i < diseases.length; i++) {
-        final disease = diseases[i];
+        final diseaseData = diseases[i];
         final docRef = _firestore.collection(_collection).doc();
         
-        final diseaseData = {
+        final firestoreData = {
           'id': docRef.id,
-          'name': disease.name,
-          'description': disease.description,
-          'specializations': disease.specializations,
-          'iconCodePoint': disease.icon.codePoint,
-          'colorValue': disease.color.value,
+          'name': diseaseData['name'],
+          'description': diseaseData['description'],
+          'specializations': diseaseData['specializations'],
+          'iconName': diseaseData['iconName'], // Store icon name instead of codePoint
+          'colorName': diseaseData['colorName'], // Store color name instead of value
           'isActive': true,
           'orderIndex': i,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
           // Additional metadata
-          'searchKeywords': _generateSearchKeywords(disease),
-          'category': _getCategoryFromName(disease.name),
+          'searchKeywords': _generateSearchKeywords(diseaseData['name'], diseaseData['description']),
+          'category': _getCategoryFromName(diseaseData['name']),
         };
         
-        batch.set(docRef, diseaseData);
+        batch.set(docRef, firestoreData);
       }
       
       await batch.commit();
@@ -173,16 +213,7 @@ class DiseaseFirestoreService {
 
       return snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        return Disease(
-          name: data['name'] ?? '',
-          description: data['description'] ?? '',
-          specializations: List<String>.from(data['specializations'] ?? []),
-          icon: IconData(
-            data['iconCodePoint'] ?? Icons.health_and_safety.codePoint,
-            fontFamily: 'MaterialIcons',
-          ),
-          color: Color(data['colorValue'] ?? Colors.grey.value),
-        );
+        return _createDiseaseFromFirestoreData(data);
       }).toList();
     } catch (e) {
       print('Error fetching diseases: $e');
@@ -203,16 +234,7 @@ class DiseaseFirestoreService {
 
       final List<Disease> allDiseases = snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        return Disease(
-          name: data['name'] ?? '',
-          description: data['description'] ?? '',
-          specializations: List<String>.from(data['specializations'] ?? []),
-          icon: IconData(
-            data['iconCodePoint'] ?? Icons.health_and_safety.codePoint,
-            fontFamily: 'MaterialIcons',
-          ),
-          color: Color(data['colorValue'] ?? Colors.grey.value),
-        );
+        return _createDiseaseFromFirestoreData(data);
       }).toList();
 
       // Filter based on search query
@@ -228,7 +250,7 @@ class DiseaseFirestoreService {
   }
 
   // Add a new disease
-  static Future<String?> addDisease(Disease disease) async {
+  static Future<String?> addDisease(Disease disease, String iconName, String colorName) async {
     try {
       final docRef = _firestore.collection(_collection).doc();
       
@@ -237,13 +259,13 @@ class DiseaseFirestoreService {
         'name': disease.name,
         'description': disease.description,
         'specializations': disease.specializations,
-        'iconCodePoint': disease.icon.codePoint,
-        'colorValue': disease.color.value,
+        'iconName': iconName,
+        'colorName': colorName,
         'isActive': true,
         'orderIndex': await _getNextOrderIndex(),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        'searchKeywords': _generateSearchKeywords(disease),
+        'searchKeywords': _generateSearchKeywords(disease.name, disease.description),
         'category': _getCategoryFromName(disease.name),
       };
       
@@ -257,16 +279,16 @@ class DiseaseFirestoreService {
   }
 
   // Update a disease
-  static Future<bool> updateDisease(String diseaseId, Disease disease) async {
+  static Future<bool> updateDisease(String diseaseId, Disease disease, String iconName, String colorName) async {
     try {
       await _firestore.collection(_collection).doc(diseaseId).update({
         'name': disease.name,
         'description': disease.description,
         'specializations': disease.specializations,
-        'iconCodePoint': disease.icon.codePoint,
-        'colorValue': disease.color.value,
+        'iconName': iconName,
+        'colorName': colorName,
         'updatedAt': FieldValue.serverTimestamp(),
-        'searchKeywords': _generateSearchKeywords(disease),
+        'searchKeywords': _generateSearchKeywords(disease.name, disease.description),
         'category': _getCategoryFromName(disease.name),
       });
       
@@ -304,16 +326,7 @@ class DiseaseFirestoreService {
 
       return snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        return Disease(
-          name: data['name'] ?? '',
-          description: data['description'] ?? '',
-          specializations: List<String>.from(data['specializations'] ?? []),
-          icon: IconData(
-            data['iconCodePoint'] ?? Icons.health_and_safety.codePoint,
-            fontFamily: 'MaterialIcons',
-          ),
-          color: Color(data['colorValue'] ?? Colors.grey.value),
-        );
+        return _createDiseaseFromFirestoreData(data);
       }).toList();
     } catch (e) {
       print('Error fetching diseases by specialization: $e');
@@ -336,18 +349,29 @@ class DiseaseFirestoreService {
     }
   }
 
+  // Helper method to create Disease object from Firestore data
+  static Disease _createDiseaseFromFirestoreData(Map<String, dynamic> data) {
+    final iconName = data['iconName'] ?? 'health_and_safety';
+    final colorName = data['colorName'] ?? 'greyMedium';
+    
+    return Disease(
+      name: data['name'] ?? '',
+      description: data['description'] ?? '',
+      specializations: List<String>.from(data['specializations'] ?? []),
+      icon: _iconMapping[iconName] ?? Icons.health_and_safety,
+      color: _colorMapping[colorName] ?? Colors.grey,
+    );
+  }
+
   // Helper method to generate search keywords
-  static List<String> _generateSearchKeywords(Disease disease) {
+  static List<String> _generateSearchKeywords(String name, String description) {
     final keywords = <String>[];
     
     // Add name words
-    keywords.addAll(disease.name.toLowerCase().split(' '));
+    keywords.addAll(name.toLowerCase().split(' '));
     
     // Add description words
-    keywords.addAll(disease.description.toLowerCase().split(' '));
-    
-    // Add specializations
-    keywords.addAll(disease.specializations.map((s) => s.toLowerCase()));
+    keywords.addAll(description.toLowerCase().split(' '));
     
     // Remove common words and duplicates
     final commonWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
@@ -399,4 +423,8 @@ class DiseaseFirestoreService {
       return 0;
     }
   }
+
+  // Getter methods for the mappings (useful for UI components)
+  static Map<String, IconData> get availableIcons => _iconMapping;
+  static Map<String, Color> get availableColors => _colorMapping;
 }

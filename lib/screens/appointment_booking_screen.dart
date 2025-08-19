@@ -1,10 +1,9 @@
+// appointment_booking_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:doctorappoinmentapp/services/appointment_service.dart';
 import 'package:doctorappoinmentapp/models/doctor_model.dart';
 import 'package:doctorappoinmentapp/models/disease_model.dart';
-import 'package:doctorappoinmentapp/screens/doctor_profile_screen.dart';
 
 class AppointmentBookingScreen extends StatefulWidget {
   final Doctor? preSelectedDoctor;
@@ -76,60 +75,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
     }
   }
 
-  String _convertTo24HourFormat(String time12) {
-    try {
-      // Handle formats like "9:00 AM", "2:30 PM"
-      final parts = time12.trim().split(' ');
-      if (parts.length != 2) return time12; // Return original if format is unexpected
-      
-      final timePart = parts[0];
-      final amPm = parts[1].toUpperCase();
-      
-      final timeSplit = timePart.split(':');
-      if (timeSplit.length != 2) return time12; // Return original if format is unexpected
-      
-      int hour = int.parse(timeSplit[0]);
-      int minute = int.parse(timeSplit[1]);
-      
-      // Convert to 24-hour format
-      if (amPm == 'PM' && hour != 12) {
-        hour += 12;
-      } else if (amPm == 'AM' && hour == 12) {
-        hour = 0;
-      }
-      
-      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      print('Error converting time format: $e');
-      return time12; // Return original if conversion fails
-    }
-  }
-
-  String _formatTimeDisplay(String time24) {
-    try {
-      // Convert 24-hour format to 12-hour format for display
-      final timeParts = time24.split(':');
-      if (timeParts.length != 2) return time24;
-      
-      int hour = int.parse(timeParts[0]);
-      int minute = int.parse(timeParts[1]);
-      
-      String amPm = hour >= 12 ? 'PM' : 'AM';
-      
-      // Convert to 12-hour format
-      if (hour == 0) {
-        hour = 12;
-      } else if (hour > 12) {
-        hour -= 12;
-      }
-      
-      return '${hour}:${minute.toString().padLeft(2, '0')} $amPm';
-    } catch (e) {
-      print('Error formatting time for display: $e');
-      return time24;
-    }
-  }
-
+  // Load available slots for selected doctor and date
   Future<void> _loadAvailableSlots() async {
     if (selectedDoctor == null || selectedDate == null) return;
 
@@ -140,47 +86,22 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
     });
 
     try {
-      final dateString = DateFormat('yyyy-MM-dd').format(selectedDate!);
-      print('🔍 Loading slots for doctor: ${selectedDoctor!.id}, date: $dateString');
+      // Format date consistently
+      final dateString = _formatDate(selectedDate!);
+      print('🔍 Loading slots for date: $dateString');
       
-      // Fetch slots from appointment service (these come in 12-hour format)
-      List<String> slotsFrom12Hour = await _appointmentService.fetchAvailableSlots(selectedDoctor!.id, dateString);
-      print('🔄 AppointmentService returned ${slotsFrom12Hour.length} slots: $slotsFrom12Hour');
-      
-      // Convert 12-hour format slots to 24-hour format for internal processing
-      List<String> slots24Hour = slotsFrom12Hour.map((slot) => _convertTo24HourFormat(slot)).toList();
-      
-      // Check if no slots are available
-      if (slots24Hour.isEmpty) {
-        print('❌ No available slots found for $dateString');
-        setState(() {
-          availableSlots = [];
-          isLoadingSlots = false;
-        });
-        return;
-      }
-      
-      // Sort the slots chronologically
-      slots24Hour.sort((a, b) {
-        try {
-          final timeA = DateFormat('HH:mm').parse(a);
-          final timeB = DateFormat('HH:mm').parse(b);
-          return timeA.compareTo(timeB);
-        } catch (e) {
-          return 0;
-        }
-      });
+      // Fetch slots from service
+      final slots = await _appointmentService.fetchAvailableSlots(selectedDoctor!.id, dateString);
       
       setState(() {
-        availableSlots = slots24Hour; // Store in 24-hour format for consistency
+        availableSlots = slots;
         isLoadingSlots = false;
       });
       
-      print('🎉 Successfully loaded ${availableSlots.length} slots for UI');
+      print('✅ Loaded ${availableSlots.length} slots');
       
     } catch (e) {
       print('❌ Error loading slots: $e');
-      print('📍 Error stack trace: ${StackTrace.current}');
       
       setState(() {
         availableSlots = [];
@@ -188,27 +109,55 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
       });
       
       if (mounted) {
-        _showError('Failed to load available time slots. Please try again or select a different date.');
+        _showError('Failed to load available time slots. Please try again.');
       }
     }
   }
 
-  Future<void> _bookAppointment() async {
-    if (!_formKey.currentState!.validate() || 
-        selectedDoctor == null || 
-        selectedDate == null || 
-        selectedTime == null) {
-      _showError('Please fill all required fields');
-      return;
-    }
+  // Format date consistently (YYYY-MM-DD)
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
 
-    // Allow booking for tomorrow and future dates only
+  // Select date
+  Future<void> _selectDate() async {
     final today = DateTime.now();
     final tomorrow = DateTime(today.year, today.month, today.day + 1);
-    final selectedDateOnly = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day);
     
-    if (selectedDateOnly.isBefore(tomorrow)) {
-      _showError('Cannot book appointments for today or past dates. Please select tomorrow or a future date.');
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: tomorrow,
+      firstDate: tomorrow,
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).colorScheme.secondary,
+              surface: Theme.of(context).cardColor,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && picked != selectedDate) {
+      setState(() {
+        selectedDate = picked;
+        selectedTime = null;
+      });
+      await _loadAvailableSlots();
+    }
+  }
+
+  // Book appointment
+  Future<void> _bookAppointment() async {
+    if (!_formKey.currentState!.validate() ||
+        selectedDoctor == null ||
+        selectedDate == null ||
+        selectedTime == null) {
+      _showError('Please fill all required fields');
       return;
     }
 
@@ -225,16 +174,12 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
         }
       }
       
-      // Convert 24-hour format back to 12-hour format for booking
-      // because the appointment service expects the same format as stored in database
-      String timeForBooking = _formatTimeDisplay(selectedTime!); // This converts to 12-hour format
-      
       await _appointmentService.bookAppointment(
         doctorId: selectedDoctor!.id,
         userName: _nameController.text.trim(),
         userPhone: _phoneController.text.trim(),
-        date: DateFormat('yyyy-MM-dd').format(selectedDate!),
-        time: timeForBooking, // Use 12-hour format for booking
+        date: _formatDate(selectedDate!),
+        time: selectedTime!,
         userEmail: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
         symptoms: enhancedSymptoms.isEmpty ? null : enhancedSymptoms,
         appointmentType: selectedAppointmentType,
@@ -249,57 +194,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
     }
   }
 
-  Future<void> _selectDate() async {
-    final today = DateTime.now();
-    final tomorrow = DateTime(today.year, today.month, today.day + 1);
-    
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: tomorrow, // Start from tomorrow
-      firstDate: tomorrow,   // Start from tomorrow, not today
-      lastDate: DateTime.now().add(const Duration(days: 30)),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Theme.of(context).colorScheme.secondary,
-              surface: Theme.of(context).cardColor,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null && picked != selectedDate) {
-      // Ensure we only allow tomorrow and future dates
-      final selectedDateOnly = DateTime(picked.year, picked.month, picked.day);
-      final tomorrowOnly = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
-      
-      if (selectedDateOnly.isBefore(tomorrowOnly)) {
-        _showError('Cannot book appointments for today or past dates. Please select tomorrow or a future date.');
-        return;
-      }
-      
-      setState(() {
-        selectedDate = picked;
-        selectedTime = null;
-      });
-      _loadAvailableSlots();
-    }
-  }
-
-  void _viewDoctorProfile() {
-    if (selectedDoctor != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DoctorProfileScreen(doctorId: selectedDoctor!.id),
-        ),
-      );
-    }
-  }
-
+  // Show error message
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -311,6 +206,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
     );
   }
 
+  // Show success dialog
   void _showSuccessDialog() {
     showDialog(
       context: context,
@@ -348,29 +244,11 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('📅 ${DateFormat('EEEE, MMM dd, yyyy').format(selectedDate!)}', style: const TextStyle(fontSize: 12)),
-                  Text('🕒 ${_formatTimeDisplay(selectedTime!)}', style: const TextStyle(fontSize: 12)),
+                  Text('🕒 $selectedTime', style: const TextStyle(fontSize: 12)),
                   Text('💬 ${selectedAppointmentType.replaceAll('_', ' ').toUpperCase()}', style: const TextStyle(fontSize: 12)),
                 ],
               ),
             ),
-            if (widget.selectedDiseases?.isNotEmpty == true) ...[
-              const SizedBox(height: 8),
-              const Text('Health Concerns:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 4,
-                children: widget.selectedDiseases!.map((disease) => 
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondary.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(disease.name, style: const TextStyle(fontSize: 9)),
-                  )
-                ).toList(),
-              ),
-            ],
           ],
         ),
         actions: [
@@ -392,6 +270,46 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
     );
   }
 
+  // Debug method
+  Future<void> _debugTimeSlots() async {
+    if (selectedDoctor == null) {
+      _showError('Please select a doctor first');
+      return;
+    }
+
+    await _appointmentService.debugTimeSlots(selectedDoctor!.id);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Debug Complete'),
+        content: Text('Check console for debug information'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Create sample time slots for testing
+  Future<void> _createSampleSlots() async {
+    if (selectedDoctor == null) {
+      _showError('Please select a doctor first');
+      return;
+    }
+
+    try {
+      await _appointmentService.createSampleTimeSlots(selectedDoctor!.id, selectedDoctor!.name);
+      _showError('Sample time slots created! Try selecting a date now.');
+    } catch (e) {
+      _showError('Failed to create sample slots: $e');
+    }
+  }
+
+  // Build compact card widget
   Widget _buildCompactCard(String title, IconData icon, Widget child, {Color? accentColor}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -442,6 +360,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
     );
   }
 
+  // Build text field widget
   Widget _buildCompactTextField(
     String label,
     TextEditingController controller,
@@ -497,6 +416,20 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         toolbarHeight: 56,
+        actions: [
+          // Debug button
+          IconButton(
+            icon: Icon(Icons.bug_report),
+            onPressed: _debugTimeSlots,
+            tooltip: 'Debug Slots',
+          ),
+          // Create sample slots button
+          IconButton(
+            icon: Icon(Icons.add_alarm),
+            onPressed: _createSampleSlots,
+            tooltip: 'Create Sample Slots',
+          ),
+        ],
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
         ),
@@ -507,7 +440,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
           key: _formKey,
           child: Column(
             children: [
-              // Doctor Info Header (if preselected)
+              // Doctor Info Header
               if (selectedDoctor != null) ...[
                 Container(
                   width: double.infinity,
@@ -587,29 +520,12 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 8),
-                      TextButton.icon(
-                        onPressed: _viewDoctorProfile,
-                        icon: const Icon(Icons.visibility, color: Colors.white, size: 14),
-                        label: const Text(
-                          'View Profile',
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                        style: TextButton.styleFrom(
-                          backgroundColor: Colors.white.withOpacity(0.2),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          minimumSize: const Size(0, 32),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        ),
-                      ),
                     ],
                   ),
                 ),
               ],
 
-              // Health Concerns (if any)
+              // Health Concerns
               if (widget.selectedDiseases?.isNotEmpty == true)
                 _buildCompactCard(
                   'Health Concerns',
@@ -759,7 +675,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
                 ),
               ),
 
-              // Date & Time
+              // Date & Time Selection
               _buildCompactCard(
                 'Schedule',
                 Icons.calendar_today_outlined,
@@ -829,7 +745,8 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
                           fontWeight: FontWeight.bold,
                           color: Theme.of(context).colorScheme.secondary,
                         ),
-                      ),const SizedBox(height: 8),
+                      ),
+                      const SizedBox(height: 8),
                       if (isLoadingSlots)
                         const Center(
                           child: Padding(
@@ -858,7 +775,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Please try selecting another date. Doctor may not have slots available for ${DateFormat('MMM dd, yyyy').format(selectedDate!)}',
+                                'Please try selecting another date or create sample slots using the button above.',
                                 style: TextStyle(
                                   color: Colors.orange.shade700,
                                   fontSize: 12,
@@ -901,7 +818,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
                                   ),
                                   child: Center(
                                     child: Text(
-                                      _formatTimeDisplay(time),
+                                      time,
                                       style: TextStyle(
                                         color: isSelected
                                             ? Colors.white
@@ -966,7 +883,7 @@ class _AppointmentBookingScreenState extends State<AppointmentBookingScreen> {
                     shadowColor: Colors.transparent,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                   ),
-                  child: isBooking 
+                  child: isBooking
                       ? const SizedBox(
                           width: 20,
                           height: 20,

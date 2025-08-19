@@ -1,6 +1,7 @@
 // screens/doctor_profile_screen.dart
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import '../models/doctor_model.dart';
 import 'appointment_booking_screen.dart';
 
@@ -20,6 +21,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
   Doctor? doctor;
   bool isLoading = true;
   bool isLoadingReviews = true;
+  
   List<Map<String, dynamic>> reviews = [];
   
   @override
@@ -50,31 +52,327 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
     }
   }
 
+  void _showReviewDialog() {
+    final TextEditingController commentController = TextEditingController();
+    int selectedRating = 0;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('Write a Review'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Rate your experience:'),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            selectedRating = index + 1;
+                          });
+                        },
+                        child: Icon(
+                          index < selectedRating ? Icons.star : Icons.star_outline,
+                          color: Colors.amber,
+                          size: 32,
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Your comment:'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: commentController,
+                    maxLines: 4,
+                    decoration: InputDecoration(
+                      hintText: 'Share your experience...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: selectedRating > 0 ? () {
+                    _submitReview(selectedRating, commentController.text);
+                    Navigator.pop(context);
+                  } : null,
+                  child: const Text('Submit Review'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAllReviews() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'All Reviews',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: reviews.length,
+                  itemBuilder: (context, index) => _buildReviewCard(reviews[index]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatReviewDate(dynamic timestamp) {
+    if (timestamp == null) return '';
+    
+    try {
+      DateTime date;
+      if (timestamp is Timestamp) {
+        date = timestamp.toDate();
+      } else {
+        return '';
+      }
+      
+      final now = DateTime.now();
+      final difference = now.difference(date);
+      
+      if (difference.inDays > 0) {
+        return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours} hour${difference.inHours == 1 ? '' : 's'} ago';
+      } else {
+        return 'Just now';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  Future<void> _submitReview(int rating, String comment) async {
+    try {
+      // Get current user from Firebase Auth
+      final User? currentUser = FirebaseAuth.instance.currentUser;
+      
+      if (currentUser == null) {
+        _showError('You must be logged in to submit a review');
+        return;
+      }
+
+      String userId = currentUser.uid;
+      String userName = 'Anonymous User'; // Default fallback
+      
+      // Try to get user name from multiple sources
+      if (currentUser.displayName != null && currentUser.displayName!.isNotEmpty) {
+        userName = currentUser.displayName!;
+      } else {
+        // Try to fetch user name from Firestore users collection
+        try {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+          
+          if (userDoc.exists) {
+            final userData = userDoc.data();
+            userName = userData?['name'] ?? userData?['fullName'] ?? userName;
+          }
+        } catch (e) {
+          print('Could not fetch user name from Firestore: $e');
+          // Use email as fallback if available
+          if (currentUser.email != null) {
+            userName = currentUser.email!.split('@')[0]; // Use email prefix
+          }
+        }
+      }
+
+      // Check if user has already reviewed this doctor
+      final existingReview = await FirebaseFirestore.instance
+          .collection('reviews')
+          .where('doctorId', isEqualTo: widget.doctorId)
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      if (existingReview.docs.isNotEmpty) {
+        // Update existing review instead of creating new one
+        await FirebaseFirestore.instance
+            .collection('reviews')
+            .doc(existingReview.docs.first.id)
+            .update({
+          'rating': rating,
+          'comment': comment,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Review updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        // Create new review
+        await FirebaseFirestore.instance.collection('reviews').add({
+          'doctorId': widget.doctorId,
+          'userId': userId,
+          'patientName': userName,
+          'rating': rating,
+          'comment': comment,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Review submitted successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+
+      // Update doctor's overall rating
+      await _updateDoctorRating();
+
+      // Refresh reviews
+      await _loadReviews();
+
+    } catch (e) {
+      _showError('Error submitting review: ${e.toString()}');
+    }
+  }
+
+  Future<void> _updateDoctorRating() async {
+    try {
+      final reviewsSnapshot = await FirebaseFirestore.instance
+          .collection('reviews')
+          .where('doctorId', isEqualTo: widget.doctorId)
+          .get();
+
+      if (reviewsSnapshot.docs.isNotEmpty) {
+        double totalRating = 0;
+        int reviewCount = reviewsSnapshot.docs.length;
+
+        for (var doc in reviewsSnapshot.docs) {
+          totalRating += (doc.data()['rating'] ?? 0).toDouble();
+        }
+
+        double averageRating = totalRating / reviewCount;
+
+        await FirebaseFirestore.instance
+          .collection('doctors')
+          .doc(widget.doctorId)
+          .update({
+        'rating': averageRating,
+        'reviewCount': reviewCount,
+      });
+        await _loadDoctorProfile();
+      }
+    } catch (e) {
+      print('Error updating doctor rating: $e');
+    }
+  }
+
   Future<void> _loadReviews() async {
+    print('🔍 Loading reviews for doctor: ${widget.doctorId}');
+    
+    setState(() {
+      isLoadingReviews = true;
+    });
+
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('reviews')
           .where('doctorId', isEqualTo: widget.doctorId)
-          .orderBy('createdAt', descending: true)
-          .limit(10)
-          .get();
+          .get(); // Remove orderBy to avoid index issues
       
+      print('📝 Found ${snapshot.docs.length} reviews for doctor ${widget.doctorId}');
+      
+      if (snapshot.docs.isNotEmpty) {
+        final docs = snapshot.docs;
+        docs.sort((a, b) {
+          final aTime = a.data()['createdAt'] as Timestamp?;
+          final bTime = b.data()['createdAt'] as Timestamp?;
+          
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          
+          return bTime.compareTo(aTime); // Descending order (newest first)
+        });
+        
+        setState(() {
+          reviews = docs.take(10).map((doc) => {
+            'id': doc.id,
+            ...doc.data(),
+          }).toList();
+          isLoadingReviews = false;
+        });
+      } else {
+        setState(() {
+          reviews = [];
+          isLoadingReviews = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading reviews for doctor ${widget.doctorId}: $e');
       setState(() {
-        reviews = snapshot.docs.map((doc) => {
-          'id': doc.id,
-          ...doc.data(),
-        }).toList();
         isLoadingReviews = false;
       });
-    } catch (e) {
-      setState(() => isLoadingReviews = false);
     }
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _bookAppointment() {
@@ -326,9 +624,9 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
           ),
           _buildStatItem(
             'Fee',
-            '\$${doctor!.consultationFee?.toString() ?? 'N/A'}',
-            Icons.attach_money,
-          ),
+            'PKR ${doctor!.consultationFee?.toString() ?? 'N/A'}',
+            Icons.payment,
+          )
         ],
       ),
     );
@@ -528,66 +826,123 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
   }
 
   Widget _buildReviewsContent() {
-    if (isLoadingReviews) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (reviews.isEmpty) {
-      return Text(
-        'No reviews yet',
-        style: TextStyle(
-          color: Colors.grey.shade600,
-          fontStyle: FontStyle.italic,
-        ),
-      );
-    }
-
     return Column(
-      children: reviews.take(3).map((review) => Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Theme.of(context).primaryColor.withOpacity(0.2),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Add Review Button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _showReviewDialog,
+            icon: const Icon(Icons.rate_review),
+            label: const Text('Write a Review'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+              foregroundColor: Theme.of(context).colorScheme.secondary,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                ),
+              ),
+            ),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  review['patientName'] ?? 'Anonymous',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                Row(
-                  children: List.generate(5, (index) => Icon(
-                    index < (review['rating'] ?? 0)
-                        ? Icons.star
-                        : Icons.star_outline,
-                    size: 16,
-                    color: Colors.amber,
-                  )),
-                ),
-              ],
+        const SizedBox(height: 16),
+
+        // Reviews List
+        if (isLoadingReviews)
+          const Center(child: CircularProgressIndicator())
+        else if (reviews.isEmpty)
+          Text(
+            'No reviews yet. Be the first to review!',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontStyle: FontStyle.italic,
             ),
+          )
+        else ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${reviews.length} Review${reviews.length == 1 ? '' : 's'}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              if (reviews.length > 3)
+                TextButton(
+                  onPressed: () => _showAllReviews(),
+                  child: const Text('View All'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...reviews.take(3).map((review) => _buildReviewCard(review)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildReviewCard(Map<String, dynamic> review) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).primaryColor.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                review['patientName'] ?? 'Anonymous',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+              Row(
+                children: List.generate(5, (index) => Icon(
+                  index < (review['rating'] ?? 0)
+                      ? Icons.star
+                      : Icons.star_outline,
+                  size: 16,
+                  color: Colors.amber,
+                )),
+              ),
+            ],
+          ),
+          if (review['comment'] != null && review['comment'].toString().isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              review['comment'] ?? '',
+              review['comment'],
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.grey.shade700,
               ),
             ),
           ],
-        ),
-      )).toList(),
+          const SizedBox(height: 8),
+          Text(
+            _formatReviewDate(review['createdAt']),
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

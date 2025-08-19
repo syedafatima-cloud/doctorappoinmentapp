@@ -1,9 +1,11 @@
+import 'package:doctorappoinmentapp/screens/doctor_dashboard_screens/doctor_dashboard_screen.dart';
 import 'package:doctorappoinmentapp/screens/registeration_screens/signup_screen.dart';
+import 'package:doctorappoinmentapp/screens/homescreen.dart';
+import 'package:doctorappoinmentapp/services/doctor_register_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 
 // Define the admin credentials
 const String adminEmail = "admin@example.com";
@@ -29,6 +31,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final DoctorRegistrationService _doctorService = DoctorRegistrationService();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
   late AnimationController _animationController;
@@ -65,6 +68,68 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     super.dispose();
   }
 
+  Future<void> _clearLoginData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('isDoctorLoggedIn');
+    await prefs.remove('isAdmin');
+    await prefs.remove('isLoggedIn');
+    await prefs.remove('doctorId');
+    
+    // Sign out from Firebase if needed
+    if (FirebaseAuth.instance.currentUser != null) {
+      await FirebaseAuth.instance.signOut();
+    }
+  }
+  Future<void> _debugUserData(String email) async {
+  try {
+    print('\n🔍 DEBUG: Analyzing user data for $email');
+    
+    // Check in Firebase Auth users collection
+    final userQuery = await FirebaseFirestore.instance
+        .collection('users')
+        .where('email', isEqualTo: email)
+        .get();
+    
+    print('📊 Users collection results: ${userQuery.docs.length}');
+    for (var doc in userQuery.docs) {
+      final data = doc.data();
+      print('  - User role: ${data['role']} | Email: ${data['email']}');
+    }
+    
+    // Check in doctors collection
+    final doctorsQuery = await FirebaseFirestore.instance
+        .collection('doctors')
+        .where('email', isEqualTo: email)
+        .get();
+    
+    print('📊 Doctors collection results: ${doctorsQuery.docs.length}');
+    for (var doc in doctorsQuery.docs) {
+      final data = doc.data();
+      print('  - Doctor: ${data['fullName']} | Email: ${data['email']} | Verified: ${data['isVerified']}');
+    }
+    
+    // Check in pending registrations
+    final pendingQuery = await FirebaseFirestore.instance
+        .collection('pending_doctor_registrations')
+        .where('email', isEqualTo: email)
+        .get();
+    
+    print('📊 Pending registrations results: ${pendingQuery.docs.length}');
+    for (var doc in pendingQuery.docs) {
+      final data = doc.data();
+      print('  - Status: ${data['status']} | Name: ${data['fullName']} | Email: ${data['email']}');
+    }
+    
+    // Test the service method
+    final serviceResult = await _doctorService.getApprovedDoctorByEmail(email);
+    print('📊 Service method result: ${serviceResult != null ? 'FOUND' : 'NOT FOUND'}');
+    
+    print('🔍 DEBUG: Analysis complete\n');
+    
+  } catch (e) {
+    print('❌ DEBUG: Error analyzing user data: $e');
+  }
+}
   Widget _buildInputField(String label,
       {bool isPassword = false, 
       TextEditingController? controller, 
@@ -141,6 +206,135 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     );
   }
 
+  Future<Map<String, dynamic>?> _checkApprovedDoctor(String email) async {
+  try {
+    print('🔍 STEP 1: Checking for approved doctor with email: $email');
+    
+    // STEP 1: Check in the main doctors collection (active doctors only)
+    final doctorsQuery = await FirebaseFirestore.instance
+        .collection('doctors')
+        .where('email', isEqualTo: email)
+        .where('isVerified', isEqualTo: true) // Only verified doctors
+        .get();
+    
+    print('📊 Active doctors found: ${doctorsQuery.docs.length}');
+    
+    if (doctorsQuery.docs.isNotEmpty) {
+      final doc = doctorsQuery.docs.first;
+      final doctorData = doc.data();
+      
+      // Validate that this doctor is actually active and not deleted
+      if (doctorData['isActive'] != false && 
+          doctorData['fullName'] != null && 
+          doctorData['fullName'].toString().isNotEmpty) {
+        
+        doctorData['requestId'] = doc.id;
+        print('✅ FOUND: Active verified doctor - ${doctorData['fullName']}');
+        return doctorData;
+      } else {
+        print('⚠️ Doctor found but inactive or invalid: ${doctorData['fullName']}');
+      }
+    }
+    
+    // STEP 2: Check in pending registrations with approved status (fallback)
+    print('🔍 STEP 2: Checking pending registrations...');
+    final pendingQuery = await FirebaseFirestore.instance
+        .collection('pending_doctor_registrations')
+        .where('email', isEqualTo: email)
+        .where('status', isEqualTo: 'approved')
+        .get();
+    
+    print('📊 Approved pending registrations: ${pendingQuery.docs.length}');
+    
+    if (pendingQuery.docs.isNotEmpty) {
+      final doc = pendingQuery.docs.first;
+      final doctorData = doc.data();
+      
+      // Check if this approved registration has a corresponding active doctor
+      final correspondingDoctor = await FirebaseFirestore.instance
+          .collection('doctors')
+          .doc(doctorData['approvedDoctorId'])
+          .get();
+      
+      if (correspondingDoctor.exists) {
+        final activeData = correspondingDoctor.data()!;
+        activeData['requestId'] = correspondingDoctor.id;
+        print('✅ FOUND: Approved doctor via pending registration - ${activeData['fullName']}');
+        return activeData;
+      } else {
+        print('⚠️ Approved registration found but no corresponding active doctor');
+      }
+    }
+    
+    print('❌ No valid approved doctor found for email: $email');
+    return null;
+    
+  } catch (e) {
+    print('❌ Error checking approved doctor: $e');
+    return null;
+  }
+}
+
+// Also add this method to debug what's in your collections:
+Future<void> _debugAllDoctorData(String email) async {
+  try {
+    print('\n🔍 === DEBUGGING ALL DOCTOR DATA FOR $email ===');
+    
+    // Check doctors collection
+    final doctors = await FirebaseFirestore.instance
+        .collection('doctors')
+        .get();
+    
+    print('📊 Total doctors in collection: ${doctors.docs.length}');
+    for (var doc in doctors.docs) {
+      final data = doc.data();
+      if (data['email'] == email) {
+        print('  🎯 MATCH - Doctor ID: ${doc.id}');
+        print('     Name: ${data['fullName']}');
+        print('     Email: ${data['email']}');
+        print('     IsVerified: ${data['isVerified']}');
+        print('     IsActive: ${data['isActive']}');
+      }
+    }
+    
+    // Check pending registrations
+    final pending = await FirebaseFirestore.instance
+        .collection('pending_doctor_registrations')
+        .get();
+    
+    print('📊 Total pending registrations: ${pending.docs.length}');
+    for (var doc in pending.docs) {
+      final data = doc.data();
+      if (data['email'] == email) {
+        print('  🎯 MATCH - Request ID: ${doc.id}');
+        print('     Name: ${data['fullName']}');
+        print('     Email: ${data['email']}');
+        print('     Status: ${data['status']}');
+        print('     ApprovedDoctorId: ${data['approvedDoctorId']}');
+      }
+    }
+    
+    print('=== END DEBUGGING ===\n');
+    
+  } catch (e) {
+    print('❌ Debug error: $e');
+  }
+}
+
+  // Helper method to get all doctor registration requests for status checking
+  Future<List<Map<String, dynamic>>> _getAllDoctorRequests() async {
+    try {
+      final pending = await _doctorService.getRegistrationRequestsByStatus('pending');
+      final approved = await _doctorService.getRegistrationRequestsByStatus('approved');
+      final rejected = await _doctorService.getRegistrationRequestsByStatus('rejected');
+      
+      return [...pending, ...approved, ...rejected];
+    } catch (e) {
+      print('Error getting all doctor requests: $e');
+      return [];
+    }
+  }
+
   Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -149,10 +343,12 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       
       String email = _emailController.text.trim();
       String password = _passwordController.text.trim();
+      await _debugUserData(email);
+      await _debugAllDoctorData(email);
       final messenger = ScaffoldMessenger.of(context);
 
       try {
-        // Check if it's admin login
+        // Check if it's admin login first
         if (email == adminEmail && password == adminPassword) {
           // Authenticate admin with Firebase Auth
           try {
@@ -179,9 +375,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                     'createdAt': FieldValue.serverTimestamp(),
                   }, SetOptions(merge: true));
             } catch (createError) {
-              // If we can't create the user (might already exist but with wrong password)
               print('Error creating admin user: $createError');
-              // Try to sign in anyway - this will fail if the password is wrong
               await FirebaseAuth.instance.signInWithEmailAndPassword(
                 email: adminEmail,
                 password: adminPassword
@@ -206,54 +400,157 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             messenger.showSnackBar(
               const SnackBar(
                 content: Text("Admin login successful!"),
-                backgroundColor: Color(0xFF7E57C2), // Theme accent color
+                backgroundColor: Color(0xFF7E57C2),
               )
             );
-            // Navigate to admin page
             Navigator.pushReplacementNamed(context, '/admin');
           }
           return;
         }
         
-        // Regular user login
+        // Try Firebase Auth login first for all non-admin users
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email, 
           password: password
         );
         
-        // Check if user has admin role in Firestore
+        // After successful Firebase Auth, check user role and type
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(FirebaseAuth.instance.currentUser!.uid)
             .get();
 
         final isAdmin = userDoc.exists && userDoc.data()?['role'] == 'admin';
-
-        // Store login status and admin status in SharedPreferences
+        
+        // Check if this user is an approved doctor
+        final approvedDoctor = await _checkApprovedDoctor(email);
+        final isApprovedDoctor = approvedDoctor != null;
+        
+        // DEBUG: Print what we found
+        print('🔍 LOGIN DEBUG:');
+        print('  Email: $email');
+        print('  Is Admin: $isAdmin');
+        print('  Is Approved Doctor: $isApprovedDoctor');
+        print('  Doctor Data: $approvedDoctor');
+        
+        // Store login status in SharedPreferences
         final prefs = await SharedPreferences.getInstance();
+        
+        // CLEAR ALL PREVIOUS LOGIN DATA FIRST
+        await prefs.remove('isDoctorLoggedIn');
+        await prefs.remove('isAdmin');
+        await prefs.remove('doctorId');
+        
+        // NOW SET THE CORRECT VALUES
         await prefs.setBool('isAdmin', isAdmin);
         await prefs.setBool('isLoggedIn', true);
+        await prefs.setBool('isDoctorLoggedIn', isApprovedDoctor);
+        
+        if (isApprovedDoctor) {
+          await prefs.setString('doctorId', approvedDoctor['requestId'] ?? '');
+          print('  Stored Doctor ID: ${approvedDoctor['requestId']}');
+        } else {
+          await prefs.remove('doctorId');
+          print('  Removed Doctor ID (patient user)');
+        }
+
+        print('🚀 NAVIGATION DECISION:');
+        if (isAdmin) {
+          print('  → Going to ADMIN dashboard');
+        } else if (isApprovedDoctor) {
+          print('  → Going to DOCTOR dashboard');
+        } else {
+          print('  → Going to PATIENT homepage');
+        }
 
         if (mounted) {
+          String welcomeMessage;
+          if (isAdmin) {
+            welcomeMessage = "Admin login successful!";
+          } else if (isApprovedDoctor) {
+            welcomeMessage = "Welcome back, Dr. ${approvedDoctor['fullName']}!";
+          } else {
+            welcomeMessage = "Login successful!";
+          }
+          
           messenger.showSnackBar(
             SnackBar(
-              content: Text(isAdmin ? "Admin login successful!" : "Login successful!"),
-              backgroundColor: const Color(0xFF7E57C2), // Theme accent color
+              content: Text(welcomeMessage),
+              backgroundColor: const Color(0xFF7E57C2),
             )
           );
+          
           // Navigate to appropriate page based on user role
           if (isAdmin) {
+            print('  → Navigating to ADMIN dashboard');
             Navigator.pushReplacementNamed(context, '/admin');
+          } else if (isApprovedDoctor) {
+            print('  → Navigating to DOCTOR dashboard');
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DoctorDashboard(doctorId: approvedDoctor['requestId'] ?? ''),
+              ),
+            );
           } else {
-            Navigator.pushReplacementNamed(context, '/home');
+            print('  → Navigating to PATIENT homepage');
+            
+            // Navigate directly to HomeScreen for regular patients
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const HomeScreen(),
+              ),
+              (route) => false, // Remove all previous routes
+            );
+            
+            // Show a confirmation snackbar
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("✅ Successfully logged in as PATIENT"),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            });
           }
         }
 
       } on FirebaseAuthException catch (e) {
         String errorMessage = "An error occurred. Please try again.";
         
-        if (e.code == 'user-not-found' || e.code == 'wrong-password') {
-          errorMessage = "Incorrect email or password";
+        if (e.code == 'user-not-found') {
+          // Check if this email belongs to a pending or rejected doctor
+          final doctorRequests = await _getAllDoctorRequests();
+          bool isDoctorEmail = false;
+          String doctorStatus = '';
+          
+          for (var request in doctorRequests) {
+            if (request['email'] == email) {
+              isDoctorEmail = true;
+              doctorStatus = request['status'] ?? 'unknown';
+              break;
+            }
+          }
+          
+          if (isDoctorEmail) {
+            if (doctorStatus == 'pending') {
+              errorMessage = "Your doctor registration is pending admin approval. Please wait for approval.";
+            } else if (doctorStatus == 'rejected') {
+              errorMessage = "Your doctor registration was rejected. Please contact admin for more information.";
+            } else if (doctorStatus == 'approved') {
+              errorMessage = "Your doctor account is approved but not yet activated. Please contact admin.";
+            } else {
+              errorMessage = "Doctor account not activated. Please contact admin.";
+            }
+          } else {
+            errorMessage = "No account found with this email. Please register first.";
+          }
+        } else if (e.code == 'wrong-password') {
+          errorMessage = "Incorrect password";
         } else if (e.code == 'email-already-in-use') {
           errorMessage = "Email already in use";
         } else if (e.code == 'invalid-email') {
@@ -271,6 +568,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             SnackBar(
               content: Text(errorMessage),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             )
           );
         }
@@ -300,7 +598,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Password reset link sent to your email"),
-            backgroundColor: Color(0xFF7E57C2), // Theme accent color
+            backgroundColor: Color(0xFF7E57C2),
           )
         );
       }
@@ -324,6 +622,140 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         );
       }
     }
+  }
+
+  // Helper method to show demo credentials (updated to show dynamic info)
+  void _showDemoCredentials() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFFAF8F5),
+        title: const Text(
+          "Login Information",
+          style: TextStyle(color: Color(0xFF424242)),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Login with your registered credentials:",
+              style: TextStyle(color: Color(0xFF424242)),
+            ),
+            const SizedBox(height: 16),
+            _buildCredentialTile("👨‍💼 Admin Login", adminEmail, adminPassword),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDE7F6),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF7E57C2).withOpacity(0.3)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "👨‍⚕️ Doctor Login",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF424242),
+                      fontSize: 14,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    "Use your registered email and password.\nYour account must be approved by admin first.",
+                    style: TextStyle(
+                      color: Color(0xFF424242),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDE7F6),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF7E57C2).withOpacity(0.3)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "👤 Patient Login",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF424242),
+                      fontSize: 14,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    "Use your registered email and password.\nPatient accounts are activated immediately.",
+                    style: TextStyle(
+                      color: Color(0xFF424242),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "Close",
+              style: TextStyle(color: Color(0xFF7E57C2)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCredentialTile(String title, String email, String password) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE7F6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF7E57C2).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF424242),
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            "Email: $email",
+            style: const TextStyle(
+              color: Color(0xFF424242),
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            "Password: $password",
+            style: const TextStyle(
+              color: Color(0xFF424242),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -357,20 +789,49 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // App Logo
+                    // Demo Credentials Button
+                    Align(
+                      alignment: Alignment.topRight,
+                      child: TextButton.icon(
+                        onPressed: _showDemoCredentials,
+                        icon: const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF7E57C2),
+                          size: 18,
+                        ),
+                        label: const Text(
+                          "Login Info",
+                          style: TextStyle(
+                            color: Color(0xFF7E57C2),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.white.withOpacity(0.8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 20),
+                    
                     // Login Card
                     Container(
                       constraints: const BoxConstraints(maxWidth: 400),
                       padding: EdgeInsets.all(isSmallScreen ? 14 : 20),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEDE7F6).withOpacity(0.95), // Light Lavender with opacity
+                        color: const Color(0xFFEDE7F6).withOpacity(0.95),
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
                             blurRadius: 12,
                             spreadRadius: 0,
                             offset: const Offset(0, 4),
-                            color: const Color(0xFF7E57C2).withOpacity(0.15), // Theme accent color shadow
+                            color: const Color(0xFF7E57C2).withOpacity(0.15),
                           ),
                         ],
                       ),
@@ -379,13 +840,13 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            // Login Title - using theme colors
+                            // Login Title
                             const Text(
                               "Welcome Back",
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.normal,
-                                color: Color(0xFF424242), // Theme text color
+                                color: Color(0xFF424242),
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -439,14 +900,13 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                               alignment: Alignment.centerRight,
                               child: TextButton(
                                 onPressed: () {
-                                  // Show dialog to get email
                                   showDialog(
                                     context: context,
                                     builder: (context) => AlertDialog(
-                                      backgroundColor: const Color(0xFFFAF8F5), // Theme background
+                                      backgroundColor: const Color(0xFFFAF8F5),
                                       title: const Text(
                                         "Reset Password",
-                                        style: TextStyle(color: Color(0xFF424242)), // Theme text color
+                                        style: TextStyle(color: Color(0xFF424242)),
                                       ),
                                       content: Column(
                                         mainAxisSize: MainAxisSize.min,
@@ -500,7 +960,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                           },
                                           child: const Text(
                                             "Send",
-                                            style: TextStyle(color: Color(0xFF7E57C2)), // Theme accent color
+                                            style: TextStyle(color: Color(0xFF7E57C2)),
                                           ),
                                         ),
                                       ],
@@ -515,7 +975,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                 child: const Text(
                                   "Forgot Password?",
                                   style: TextStyle(
-                                    color: Color(0xFF7E57C2), // Theme accent color
+                                    color: Color(0xFF7E57C2),
                                     fontWeight: FontWeight.w500,
                                     fontSize: 13,
                                   ),
@@ -530,10 +990,10 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                               height: 50,
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFD1C4E9), // Theme button color
-                                  foregroundColor: const Color(0xFF424242), // Theme text color
+                                  backgroundColor: const Color(0xFFD1C4E9),
+                                  foregroundColor: const Color(0xFF424242),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16), // Theme border radius
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
                                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                                   elevation: 2,
@@ -544,7 +1004,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                         height: 22,
                                         width: 22,
                                         child: CircularProgressIndicator(
-                                          color: Color(0xFF424242), // Theme text color
+                                          color: Color(0xFF424242),
                                           strokeWidth: 2.5,
                                         ),
                                       )
@@ -552,7 +1012,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                         'Sign In',
                                         style: TextStyle(
                                           fontSize: 16,
-                                          fontWeight: FontWeight.w600, // Theme font weight
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                               ),
@@ -581,7 +1041,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                                   child: const Text(
                                     "Register",
                                     style: TextStyle(
-                                      color: Color(0xFF7E57C2), // Theme accent color
+                                      color: Color(0xFF7E57C2),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 14,
                                       decoration: TextDecoration.underline,
